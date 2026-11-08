@@ -63,15 +63,23 @@ class RateLimiter_:
     live-send-timestamps = prune_ live-send-timestamps now
     live-send-timestamps.add now
 
+STATIC-ALLOWLIST_ ::= {
+  "/index.html": "text/html; charset=utf-8",
+  "/styles.css": "text/css; charset=utf-8",
+  "/i18n.js": "text/javascript; charset=utf-8",
+  "/db.js": "text/javascript; charset=utf-8",
+  "/app.js": "text/javascript; charset=utf-8",
+}
+
 class ServerApp_:
   port/int
   passcode/string
   smtp-config/smtp.SmtpConfig
   templates/Map
-  static-assets/Map       // path -> Map { "contentType": string, "bytes": ByteArray }
+  public-dir/string
   rate-limiter/RateLimiter_ ::= RateLimiter_
 
-  constructor config/Map .static-assets:
+  constructor config/Map .public-dir:
     port = (config.get "port") or 8080
     passcode = (config.get "passcode") or ""
     templates = (config.get "templates") or {:}
@@ -143,14 +151,19 @@ class ServerApp_:
 
   serve-static_ socket/tcp.Socket path/string -> none:
     lookup := path == "/" ? "/index.html" : path
-    asset := static-assets.get lookup
-    if not asset:
+    content-type := STATIC-ALLOWLIST_.get lookup
+    if not content-type:
       send-json-error_ socket 404 "ERR_NOT_FOUND" "Resource not found"
       return
 
-    bytes := asset["bytes"] as ByteArray
-    content-type := asset["contentType"] as string
-    send-response_ socket 200 "OK" content-type bytes
+    bytes/ByteArray? := null
+    err := catch:
+      bytes = read-file-bytes_ "$public-dir$lookup"
+    if err or not bytes:
+      send-json-error_ socket 404 "ERR_NOT_FOUND" "Resource not found"
+      return
+
+    send-response_ socket 200 "OK" (content-type as string) bytes
 
   handle-meta_ socket/tcp.Socket -> none:
     langs := []
@@ -377,32 +390,14 @@ class ServerApp_:
     socket.out.write headers
     socket.out.write body --flush=true
 
-load-static-assets_ base-dir/string -> Map:
-  allowlist := {
-    "/index.html": "text/html; charset=utf-8",
-    "/styles.css": "text/css; charset=utf-8",
-    "/i18n.js": "text/javascript; charset=utf-8",
-    "/db.js": "text/javascript; charset=utf-8",
-    "/app.js": "text/javascript; charset=utf-8",
-  }
-  assets := {:}
-  allowlist.do: | route/string mime/string |
-    bytes := read-file-bytes_ "$base-dir$route"
-    assets[route] = {
-      "contentType": mime,
-      "bytes": bytes,
-    }
-  return assets
-
 main args/List:
   config-path := args.size > 0 ? args[0] : "config.json"
   public-dir := args.size > 1 ? args[1] : "public"
 
   config-bytes := read-file-bytes_ config-path
   config := (json.decode config-bytes) as Map
-  assets := load-static-assets_ public-dir
 
-  app := ServerApp_ config assets
+  app := ServerApp_ config public-dir
   network := net.open
   server-socket := network.tcp-listen app.port
   print "Wichteln server listening on http://127.0.0.1:$app.port"

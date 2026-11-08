@@ -15,6 +15,7 @@ const state = {
   ],
   presets: [],
   activePresetId: localStorage.getItem("wichteln_active_preset") || "",
+  twoWaySync: localStorage.getItem("wichteln_twoway_sync") !== "false",
   samples: [],
   dryRunMeta: null,
   activeSampleIdx: 0
@@ -38,6 +39,7 @@ const els = {
   applyBulkBtn: document.getElementById("applyBulkBtn"),
   cancelBulkBtn: document.getElementById("cancelBulkBtn"),
   addParticipantBtn: document.getElementById("addParticipantBtn"),
+  twoWaySyncCheckbox: document.getElementById("twoWaySyncCheckbox"),
   participantsTbody: document.getElementById("participantsTbody"),
   giverGroupSizeInput: document.getElementById("giverGroupSizeInput"),
   sampleCountInput: document.getElementById("sampleCountInput"),
@@ -56,6 +58,23 @@ function t(key, vars) {
 
 function getActivePreset() {
   return state.presets.find((p) => p.id === state.activePresetId) || state.presets[0];
+}
+
+function participantLabel(p, fallbackIndex = 0) {
+  if (p.name && p.email) return `${p.name} (${p.email})`;
+  if (p.name) return p.name;
+  if (p.email) return p.email;
+  return `#${fallbackIndex + 1}`;
+}
+
+function participantShortLabel(p, fallbackIndex = 0) {
+  if (p.name) return p.name;
+  if (p.email) return p.email;
+  return `#${fallbackIndex + 1}`;
+}
+
+function makeParticipantId() {
+  return `p-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function showStatus(type, message) {
@@ -106,11 +125,109 @@ function renderPresetSelect() {
   els.deletePresetBtn.disabled = state.presets.length <= 1;
 }
 
-function parseCommaGroups(value) {
-  return value
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey, allowOneWay) {
+  const td = document.createElement("td");
+  const wrap = document.createElement("div");
+  wrap.className = "excludes-cell";
+
+  const list = participant[fieldName];
+  for (const targetId of list) {
+    const targetEntry = byId.get(targetId);
+    if (!targetEntry) continue;
+    const targetP = targetEntry.p;
+    const targetList = targetP[fieldName];
+    const isMutual = Array.isArray(targetList) && targetList.includes(participant.id);
+
+    const chip = document.createElement("span");
+    chip.className = !allowOneWay || isMutual ? "exclude-chip" : "exclude-chip one-way";
+
+    if (allowOneWay) {
+      const dirBtn = document.createElement("button");
+      dirBtn.type = "button";
+      dirBtn.className = "exclude-dir-btn";
+      dirBtn.textContent = isMutual ? "↔" : "→";
+      dirBtn.title = isMutual ? t("dirTwoWayTitle") : t("dirOneWayTitle");
+      dirBtn.addEventListener("click", async () => {
+        if (!Array.isArray(targetP[fieldName])) targetP[fieldName] = [];
+        if (isMutual) {
+          targetP[fieldName] = targetP[fieldName].filter((id) => id !== participant.id);
+        } else if (!targetP[fieldName].includes(participant.id)) {
+          targetP[fieldName].push(participant.id);
+        }
+        await persistActivePreset();
+        renderActivePreset();
+      });
+      chip.appendChild(dirBtn);
+    } else {
+      const symIcon = document.createElement("span");
+      symIcon.textContent = "↔";
+      symIcon.style.fontWeight = "700";
+      chip.appendChild(symIcon);
+    }
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = participantShortLabel(targetP, targetEntry.i);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "exclude-remove-btn";
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", async () => {
+      participant[fieldName] = participant[fieldName].filter((id) => id !== targetId);
+      if ((!allowOneWay || state.twoWaySync) && Array.isArray(targetP[fieldName])) {
+        targetP[fieldName] = targetP[fieldName].filter((id) => id !== participant.id);
+      }
+      await persistActivePreset();
+      renderActivePreset();
+    });
+
+    chip.append(labelSpan, removeBtn);
+    wrap.appendChild(chip);
+  }
+
+  const availableOthers = preset.participants
+    .map((other, otherIdx) => ({ other, otherIdx }))
+    .filter(({ other }) => other.id !== participant.id && !list.includes(other.id));
+
+  if (availableOthers.length > 0) {
+    const picker = document.createElement("select");
+    picker.className = "exclude-picker";
+    const defaultOpt = document.createElement("option");
+    defaultOpt.value = "";
+    defaultOpt.textContent = t(placeholderKey);
+    picker.appendChild(defaultOpt);
+
+    for (const { other, otherIdx } of availableOthers) {
+      const opt = document.createElement("option");
+      opt.value = other.id;
+      opt.textContent = participantLabel(other, otherIdx);
+      picker.appendChild(opt);
+    }
+
+    picker.addEventListener("change", async () => {
+      const chosenId = picker.value;
+      if (!chosenId) return;
+      if (!participant[fieldName].includes(chosenId)) {
+        participant[fieldName].push(chosenId);
+      }
+      if (!allowOneWay || state.twoWaySync) {
+        const otherEntry = byId.get(chosenId);
+        if (otherEntry) {
+          if (!Array.isArray(otherEntry.p[fieldName])) otherEntry.p[fieldName] = [];
+          if (!otherEntry.p[fieldName].includes(participant.id)) {
+            otherEntry.p[fieldName].push(participant.id);
+          }
+        }
+      }
+      await persistActivePreset();
+      renderActivePreset();
+    });
+
+    wrap.appendChild(picker);
+  }
+
+  td.appendChild(wrap);
+  return td;
 }
 
 function renderActivePreset() {
@@ -119,16 +236,25 @@ function renderActivePreset() {
 
   els.presetNameInput.value = preset.name;
   els.participantCountBadge.textContent = String(preset.participants.length);
+  els.twoWaySyncCheckbox.checked = state.twoWaySync;
 
   els.giverGroupSizeInput.value = String(preset.rules.giverGroupSize ?? 2);
   els.sampleCountInput.value = String(preset.rules.sampleCount ?? 3);
   els.ruleDuplicateCoGivers.checked = preset.rules.preventDuplicateCoGiverPairs !== false;
   els.ruleDirectReciprocity.checked = preset.rules.preventDirectReciprocity === true;
 
+  const byId = new Map(preset.participants.map((p, i) => [p.id, { p, i }]));
+
   els.participantsTbody.replaceChildren();
   preset.participants.forEach((participant, idx) => {
-    if (!Array.isArray(participant.receiverGroups)) participant.receiverGroups = [];
-    if (!Array.isArray(participant.coGiverGroups)) participant.coGiverGroups = [];
+    if (!Array.isArray(participant.excludeReceivers)) participant.excludeReceivers = [];
+    if (!Array.isArray(participant.excludeCoGivers)) participant.excludeCoGivers = [];
+    participant.excludeReceivers = participant.excludeReceivers.filter(
+      (id) => id !== participant.id && byId.has(id)
+    );
+    participant.excludeCoGivers = participant.excludeCoGivers.filter(
+      (id) => id !== participant.id && byId.has(id)
+    );
 
     const tr = document.createElement("tr");
 
@@ -141,6 +267,7 @@ function renderActivePreset() {
     emailInput.addEventListener("change", async () => {
       participant.email = emailInput.value.trim();
       await persistActivePreset();
+      renderActivePreset();
     });
     tdEmail.appendChild(emailInput);
 
@@ -154,34 +281,29 @@ function renderActivePreset() {
     nameInput.addEventListener("change", async () => {
       participant.name = nameInput.value.trim();
       await persistActivePreset();
+      renderActivePreset();
     });
     tdName.appendChild(nameInput);
 
-    // Column 3: Receiver Groups ("Beschenken sich nicht")
-    const tdRecGroups = document.createElement("td");
-    const recGroupsInput = document.createElement("input");
-    recGroupsInput.type = "text";
-    recGroupsInput.placeholder = t("placeholderReceiverGroups");
-    recGroupsInput.title = t("tooltipColReceiverGroups");
-    recGroupsInput.value = participant.receiverGroups.join(", ");
-    recGroupsInput.addEventListener("change", async () => {
-      participant.receiverGroups = parseCommaGroups(recGroupsInput.value);
-      await persistActivePreset();
-    });
-    tdRecGroups.appendChild(recGroupsInput);
+    // Column 3: Direct Picker for Receiver Exclusions ("Schenkt nicht an", two-way ↔ or one-way →)
+    const tdExcludeReceivers = buildExcludesCell(
+      preset,
+      participant,
+      byId,
+      "excludeReceivers",
+      "addExcludeReceiverPlaceholder",
+      true
+    );
 
-    // Column 4: Co-Giver Groups ("Kein Schenk-Team")
-    const tdCoGroups = document.createElement("td");
-    const coGroupsInput = document.createElement("input");
-    coGroupsInput.type = "text";
-    coGroupsInput.placeholder = t("placeholderCoGiverGroups");
-    coGroupsInput.title = t("tooltipColCoGiverGroups");
-    coGroupsInput.value = participant.coGiverGroups.join(", ");
-    coGroupsInput.addEventListener("change", async () => {
-      participant.coGiverGroups = parseCommaGroups(coGroupsInput.value);
-      await persistActivePreset();
-    });
-    tdCoGroups.appendChild(coGroupsInput);
+    // Column 4: Direct Picker for Co-Giver Exclusions ("Kein Schenk-Team mit", mutual ↔)
+    const tdExcludeCoGivers = buildExcludesCell(
+      preset,
+      participant,
+      byId,
+      "excludeCoGivers",
+      "addExcludeCoGiverPlaceholder",
+      false
+    );
 
     // Column 5: Remove row
     const tdRemove = document.createElement("td");
@@ -191,14 +313,23 @@ function renderActivePreset() {
     removeRowBtn.className = "btn btn-danger btn-sm";
     removeRowBtn.textContent = "✕";
     removeRowBtn.addEventListener("click", async () => {
+      const removedId = participant.id;
       preset.participants.splice(idx, 1);
+      for (const other of preset.participants) {
+        if (Array.isArray(other.excludeReceivers)) {
+          other.excludeReceivers = other.excludeReceivers.filter((id) => id !== removedId);
+        }
+        if (Array.isArray(other.excludeCoGivers)) {
+          other.excludeCoGivers = other.excludeCoGivers.filter((id) => id !== removedId);
+        }
+      }
       await persistActivePreset();
       renderPresetSelect();
       renderActivePreset();
     });
     tdRemove.appendChild(removeRowBtn);
 
-    tr.append(tdEmail, tdName, tdRecGroups, tdCoGroups, tdRemove);
+    tr.append(tdEmail, tdName, tdExcludeReceivers, tdExcludeCoGivers, tdRemove);
     els.participantsTbody.appendChild(tr);
   });
 }
@@ -391,20 +522,12 @@ function parseBulkEntries(rawText) {
     const parts = line.split(",").map((s) => s.trim()).filter(Boolean);
     if (parts.length > 1 && parts.every((p) => p.includes("@"))) {
       for (const email of parts) {
-        entries.push({ email, name: "", receiverGroups: [], coGiverGroups: [] });
+        entries.push({ id: makeParticipantId(), email, name: "", excludeReceivers: [], excludeCoGivers: [] });
       }
     } else {
       const email = parts[0] || "";
       const name = parts[1] || "";
-      const receiverGroups = (parts[2] || "")
-        .split("|")
-        .map((g) => g.trim())
-        .filter(Boolean);
-      const coGiverGroups = (parts[3] || "")
-        .split("|")
-        .map((g) => g.trim())
-        .filter(Boolean);
-      entries.push({ email, name, receiverGroups, coGiverGroups });
+      entries.push({ id: makeParticipantId(), email, name, excludeReceivers: [], excludeCoGivers: [] });
     }
   }
   return entries;
@@ -439,6 +562,11 @@ async function init() {
     applyTranslations();
   });
 
+  els.twoWaySyncCheckbox.addEventListener("change", () => {
+    state.twoWaySync = els.twoWaySyncCheckbox.checked;
+    localStorage.setItem("wichteln_twoway_sync", String(state.twoWaySync));
+  });
+
   els.presetSelect.addEventListener("change", () => {
     state.activePresetId = els.presetSelect.value;
     localStorage.setItem("wichteln_active_preset", state.activePresetId);
@@ -468,9 +596,9 @@ async function init() {
         sampleCount: 3
       },
       participants: [
-        { email: "", name: "", receiverGroups: [], coGiverGroups: [] },
-        { email: "", name: "", receiverGroups: [], coGiverGroups: [] },
-        { email: "", name: "", receiverGroups: [], coGiverGroups: [] }
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] }
       ]
     };
     state.presets.push(newPreset);
@@ -524,9 +652,9 @@ async function init() {
     const preset = getActivePreset();
     if (!preset || !confirm(t("confirmClearParticipants"))) return;
     preset.participants = [
-      { email: "", name: "", receiverGroups: [], coGiverGroups: [] },
-      { email: "", name: "", receiverGroups: [], coGiverGroups: [] },
-      { email: "", name: "", receiverGroups: [], coGiverGroups: [] }
+      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] }
     ];
     state.samples = [];
     state.dryRunMeta = null;
@@ -580,10 +708,11 @@ async function init() {
     const preset = getActivePreset();
     if (!preset) return;
     preset.participants.push({
+      id: makeParticipantId(),
       email: "",
       name: "",
-      receiverGroups: [],
-      coGiverGroups: []
+      excludeReceivers: [],
+      excludeCoGivers: []
     });
     await persistActivePreset();
     renderPresetSelect();
@@ -605,6 +734,7 @@ async function init() {
     const entries = parseBulkEntries(els.bulkAddTextarea.value);
     if (entries.length > 0) {
       preset.participants.push(...entries);
+      normalizePreset(preset);
       await persistActivePreset();
       renderPresetSelect();
       renderActivePreset();

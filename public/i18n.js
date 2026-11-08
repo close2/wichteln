@@ -19,27 +19,31 @@ export const I18N = {
     btnClearAll: "Alle leeren",
     btnBulkAdd: "Liste einfügen",
     btnAddParticipant: "+ Zeile",
-    explainReceiverGroupTitle: "🚫 Beschenken sich nicht (Gruppenname):",
-    explainReceiverGroupText:
-      "Trage denselben Gruppennamen (z.B. „Paar1“) bei zwei oder mehr Personen ein, damit sie sich nicht gegenseitig beschenken (sie dürfen aber trotzdem gemeinsam für jemand anderen ein Geschenk organisieren).",
-    explainCoGiverGroupTitle: "🤝 Kein Schenk-Team (Gruppenname):",
-    explainCoGiverGroupText:
-      "Trage denselben Gruppennamen (z.B. „TeamX“) bei Personen ein, die bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden sollen. Mehrere Gruppennamen einfach mit Komma trennen.",
-    bulkAddHelp:
-      "E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name, NichtBeschenkenGruppe1|2, KeinTeamGruppe1|2)",
+    explainReceiverTitle: "🚫 Schenkt nicht an (Empfänger-Ausschluss):",
+    explainReceiverText:
+      "Wähle direkt die Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.",
+    explainCoGiverTitle: "🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):",
+    explainCoGiverText:
+      "Wähle Personen aus, mit denen diese Person bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden soll.",
+    twoWaySyncLabel: "„Schenkt nicht an“ standardmäßig beidseitig eintragen (↔ Paare)",
+    twoWaySyncHint:
+      "Tipp: Klicke auf ↔ / → in einem Tag, um jederzeit zwischen beidseitig (↔) und einseitig (→) zu wechseln.",
+    bulkAddHelp: "E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name)",
     btnApplyBulk: "Hinzufügen",
     btnCancel: "Abbrechen",
     colEmail: "E-Mail-Adresse *",
     colName: "Name (optional)",
-    colReceiverGroups: "Beschenken sich nicht",
-    colCoGiverGroups: "Kein Schenk-Team",
+    colExcludeReceivers: "Schenkt nicht an",
+    colExcludeCoGivers: "Kein Schenk-Team mit",
     tooltipColName: "Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.",
-    tooltipColReceiverGroups:
-      "Gleicher Gruppenname (z.B. Paar1) = diese Personen beschenken sich nicht gegenseitig. Mehrere Gruppen mit Komma trennen.",
-    tooltipColCoGiverGroups:
-      "Gleicher Gruppenname (z.B. WG1) = diese Personen bilden bei k ≥ 2 kein gemeinsames Schenk-Team. Mehrere Gruppen mit Komma trennen.",
-    placeholderReceiverGroups: "z.B. Paar1",
-    placeholderCoGiverGroups: "z.B. TeamA",
+    tooltipColExcludeReceivers:
+      "Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig (Paar), → = nur einseitig (per Klick umschaltbar).",
+    tooltipColExcludeCoGivers:
+      "Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.",
+    addExcludeReceiverPlaceholder: "+ Nicht beschenken…",
+    addExcludeCoGiverPlaceholder: "+ Kein Team mit…",
+    dirTwoWayTitle: "Beidseitiger Ausschluss (klicken für einseitig →)",
+    dirOneWayTitle: "Einseitiger Ausschluss: schenkt nicht an diese Person (klicken für beidseitig ↔)",
     rulesTitle: "Regeln & Optionen",
     ruleGiverGroupSize: "Schenkende pro Geschenk (k)",
     tooltipGiverGroupSize:
@@ -74,7 +78,7 @@ export const I18N = {
     confirmLiveSend: "Jetzt geheim auslosen und echte E-Mails an {count} Teilnehmer senden?",
     statusDryRunOk: "{count} eindeutige Beispiel-Ziehung(en) erfolgreich berechnet.",
     warnOnlyOneSolution:
-      "⚠️ Achtung: Durch die engen Ausschlussgruppen existiert mathematisch NUR EINE EINZIGE gültige Lösung! Die Ziehung ist dadurch komplett vorhersehbar (nicht geheim).",
+      "⚠️ Achtung: Durch die engen Ausschlüsse existiert mathematisch NUR EINE EINZIGE gültige Lösung! Die Ziehung ist dadurch komplett vorhersehbar (nicht geheim).",
     warnFewSolutions:
       "⚠️ Hinweis: Es existieren insgesamt nur {unique} verschiedene gültige Lösungen (angefordert: {requested}).",
     warnForcedReceivers:
@@ -89,12 +93,12 @@ export const I18N = {
       ERR_INVALID_RULES: "Ungültige Regel-Einstellungen (k muss kleiner als die Teilnehmerzahl sein).",
       ERR_PARTICIPANT_COUNT: "Zu wenige oder zu viele Teilnehmer (mindestens 3 erforderlich).",
       ERR_INVALID_EMAIL: "Mindestens eine E-Mail-Adresse fehlt oder ist ungültig.",
-      ERR_INVALID_NAME: "Ungültiger Name oder Gruppenname (keine URLs oder Sonderzeichen wie @, :, / erlaubt).",
+      ERR_INVALID_NAME: "Ungültiger Name (keine URLs oder Sonderzeichen wie @, :, / erlaubt).",
       ERR_DUPLICATE_PARTICIPANT: "Doppelte E-Mail-Adresse oder doppelter Name gefunden.",
       ERR_AUTH_FAILED: "Falscher Server-Passcode.",
       ERR_PAYLOAD_TOO_LARGE: "Anfrage ist zu groß.",
       ERR_UNSATISFIABLE:
-        "Keine gültige Ziehung möglich! Bitte lockere die Optionen oder prüfe die eingetragenen Gruppennamen.",
+        "Keine gültige Ziehung möglich! Bitte lockere die Optionen oder prüfe die eingetragenen Ausschlüsse.",
       ERR_RATE_LIMITED: "Zu viele Versuche. Bitte warte einige Minuten.",
       ERR_SMTP_FAILED: "E-Mail-Versand über den SMTP-Server fehlgeschlagen.",
       ERR_NETWORK: "Verbindung zum Backend fehlgeschlagen."
@@ -118,27 +122,30 @@ export const I18N = {
     btnClearAll: "Clear All",
     btnBulkAdd: "Paste List",
     btnAddParticipant: "+ Row",
-    explainReceiverGroupTitle: "🚫 Do Not Gift Each Other (Group Name):",
-    explainReceiverGroupText:
-      "Enter the same group name (e.g. 'Couple1') for two or more people so they won't draw each other as gift receivers (they may still co-organize a gift for someone else).",
-    explainCoGiverGroupTitle: "🤝 No Giving Team Together (Group Name):",
-    explainCoGiverGroupText:
-      "Enter the same group name (e.g. 'TeamX') for people who should not be paired together on the same giving team when k ≥ 2. Separate multiple group names with commas.",
-    bulkAddHelp:
-      "Email addresses (comma- or line-separated, or format: email, Name, NoGiftGroup1|2, NoTeamGroup1|2)",
+    explainReceiverTitle: "🚫 Does Not Gift (Receiver Exclusion):",
+    explainReceiverText:
+      "Pick people this participant should not buy a gift for (e.g. partner). They are still allowed to co-organize a gift together for a third person.",
+    explainCoGiverTitle: "🤝 Not on Team With (Co-Giver Exclusion):",
+    explainCoGiverText:
+      "Pick people this participant should not be paired with on the same giving team when k ≥ 2.",
+    twoWaySyncLabel: "Add 'Does not gift' exclusions two-way by default (↔ Couples)",
+    twoWaySyncHint: "Tip: Click ↔ / → on any chip to switch between two-way (↔) and one-way (→) exclusion at any time.",
+    bulkAddHelp: "Email addresses (comma- or line-separated, or format: email, Name)",
     btnApplyBulk: "Add",
     btnCancel: "Cancel",
     colEmail: "Email Address *",
     colName: "Name (optional)",
-    colReceiverGroups: "Do Not Gift (Groups)",
-    colCoGiverGroups: "No Giving Team (Groups)",
+    colExcludeReceivers: "Does Not Gift",
+    colExcludeCoGivers: "No Team With",
     tooltipColName: "Displayed in the email greeting and assignment lines. Falls back to the email address if left empty.",
-    tooltipColReceiverGroups:
-      "Same group name (e.g. Couple1) = these people will not gift each other. Separate multiple groups with commas.",
-    tooltipColCoGiverGroups:
-      "Same group name (e.g. Roommates) = these people will not be placed on the same giving team when k ≥ 2. Separate multiple groups with commas.",
-    placeholderReceiverGroups: "e.g. Couple1",
-    placeholderCoGiverGroups: "e.g. TeamA",
+    tooltipColExcludeReceivers:
+      "Select people this participant must not gift. ↔ = mutual (couple), → = one-way only (click icon to toggle).",
+    tooltipColExcludeCoGivers:
+      "Select people this participant must not be paired with on the same giving team when k ≥ 2.",
+    addExcludeReceiverPlaceholder: "+ Don't gift…",
+    addExcludeCoGiverPlaceholder: "+ No team with…",
+    dirTwoWayTitle: "Two-way exclusion (click to make one-way →)",
+    dirOneWayTitle: "One-way exclusion: will not gift this person (click to make two-way ↔)",
     rulesTitle: "Rules & Options",
     ruleGiverGroupSize: "Givers per Gift (k)",
     tooltipGiverGroupSize:
@@ -173,7 +180,7 @@ export const I18N = {
     confirmLiveSend: "Run the secret draw now and send real emails to {count} participants?",
     statusDryRunOk: "Successfully generated {count} distinct sample draw(s).",
     warnOnlyOneSolution:
-      "⚠️ Warning: Due to tight exclusion groups, ONLY ONE valid solution exists mathematically! The draw is completely deterministic (not secret).",
+      "⚠️ Warning: Due to tight exclusions, ONLY ONE valid solution exists mathematically! The draw is completely deterministic (not secret).",
     warnFewSolutions: "⚠️ Note: Only {unique} distinct valid solutions exist in total (requested: {requested}).",
     warnForcedReceivers:
       "⚠️ Note: The following receivers were assigned the exact same giver team across all samples: {receivers}",
@@ -187,12 +194,11 @@ export const I18N = {
       ERR_INVALID_RULES: "Invalid rule settings (k must be smaller than participant count).",
       ERR_PARTICIPANT_COUNT: "Too few or too many participants (minimum 3 required).",
       ERR_INVALID_EMAIL: "One or more email addresses are missing or invalid.",
-      ERR_INVALID_NAME: "Invalid participant name or group name (no URLs or special chars like @, :, / allowed).",
+      ERR_INVALID_NAME: "Invalid participant name (no URLs or special chars like @, :, / allowed).",
       ERR_DUPLICATE_PARTICIPANT: "Duplicate email address or participant label found.",
       ERR_AUTH_FAILED: "Invalid server passcode.",
       ERR_PAYLOAD_TOO_LARGE: "Request payload is too large.",
-      ERR_UNSATISFIABLE:
-        "No valid assignment possible! Please relax options or check your exclusion group names.",
+      ERR_UNSATISFIABLE: "No valid assignment possible! Please relax options or check your exclusions.",
       ERR_RATE_LIMITED: "Too many requests. Please wait a few minutes.",
       ERR_SMTP_FAILED: "Failed to send emails via SMTP server.",
       ERR_NETWORK: "Could not reach backend server."

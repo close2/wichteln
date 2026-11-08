@@ -186,6 +186,79 @@ body {
   font-weight: 700;
 }
 
+.sync-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding-top: 0.45rem;
+  margin-top: 0.2rem;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sync-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.excludes-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.exclude-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--tag-bg);
+  color: var(--tag-text);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.12rem 0.38rem;
+  font-size: 0.78rem;
+}
+
+.exclude-chip.one-way {
+  background: var(--surface-subtle);
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.exclude-dir-btn,
+.exclude-remove-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 0.15rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1;
+  border-radius: 3px;
+}
+
+.exclude-dir-btn:hover,
+.exclude-remove-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.exclude-picker {
+  width: auto !important;
+  min-width: 130px;
+  max-width: 175px;
+  padding: 0.22rem 0.4rem !important;
+  font-size: 0.78rem !important;
+}
+
 .btn-row {
   display: flex;
   gap: 0.4rem;

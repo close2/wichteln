@@ -71,23 +71,30 @@
           </div>
         </div>
 
-        <!-- Explanation Box for the 2 Group Columns -->
+        <!-- Explanation Box & Two-Way Sync Toggle -->
         <div class="info-explainer">
           <div class="info-item">
-            <strong data-i18n="explainReceiverGroupTitle">🚫 Beschenken sich nicht (Gruppenname):</strong>
-            <span data-i18n="explainReceiverGroupText">Trage denselben Gruppennamen (z.B. „Paar1“) bei zwei oder mehr Personen ein, damit sie sich nicht gegenseitig beschenken (sie dürfen aber trotzdem gemeinsam für jemand anderen ein Geschenk organisieren).</span>
+            <strong data-i18n="explainReceiverTitle">🚫 Schenkt nicht an (Empfänger-Ausschluss):</strong>
+            <span data-i18n="explainReceiverText">Wähle Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.</span>
           </div>
           <div class="info-item">
-            <strong data-i18n="explainCoGiverGroupTitle">🤝 Kein Schenk-Team (Gruppenname):</strong>
-            <span data-i18n="explainCoGiverGroupText">Trage denselben Gruppennamen (z.B. „TeamX“) bei Personen ein, die bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden sollen. Mehrere Gruppennamen einfach mit Komma trennen.</span>
+            <strong data-i18n="explainCoGiverTitle">🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):</strong>
+            <span data-i18n="explainCoGiverText">Wähle Personen aus, mit denen diese Person bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden soll.</span>
+          </div>
+          <div class="sync-bar">
+            <label class="sync-toggle">
+              <input type="checkbox" id="twoWaySyncCheckbox" checked>
+              <span data-i18n="twoWaySyncLabel">„Schenkt nicht an“ standardmäßig beidseitig eintragen (↔ Paare)</span>
+            </label>
+            <small class="field-help" data-i18n="twoWaySyncHint">Tipp: Klicke auf ↔ / → in einem Tag, um jederzeit zwischen beidseitig (↔) und einseitig (→) zu wechseln.</small>
           </div>
         </div>
 
         <!-- Optional Bulk Add Drawer -->
         <div id="bulkAddDrawer" class="bulk-drawer" hidden>
           <label class="field">
-            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name, NichtBeschenkenGruppe, KeinTeamGruppe)</span>
-            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, Anna, Paar1&#10;ben@example.org, Ben, Paar1"></textarea>
+            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name)</span>
+            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, Anna&#10;ben@example.org, Ben"></textarea>
           </label>
           <div class="btn-row">
             <button type="button" id="applyBulkBtn" class="btn btn-primary btn-sm" data-i18n="btnApplyBulk">Hinzufügen</button>
@@ -107,12 +114,12 @@
                   <span class="tooltip-icon" data-i18n-title="tooltipColName" title="Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.">ⓘ</span>
                 </th>
                 <th>
-                  <span data-i18n="colReceiverGroups">Beschenken sich nicht</span>
-                  <span class="tooltip-icon" data-i18n-title="tooltipColReceiverGroups" title="Gleicher Gruppenname (z.B. Paar1) = diese Personen beschenken sich nicht gegenseitig. Mehrere Gruppen mit Komma trennen.">ⓘ</span>
+                  <span data-i18n="colExcludeReceivers">Schenkt nicht an</span>
+                  <span class="tooltip-icon" data-i18n-title="tooltipColExcludeReceivers" title="Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig, → = nur einseitig (klickbar).">ⓘ</span>
                 </th>
                 <th>
-                  <span data-i18n="colCoGiverGroups">Kein Schenk-Team</span>
-                  <span class="tooltip-icon" data-i18n-title="tooltipColCoGiverGroups" title="Gleicher Gruppenname (z.B. WG1) = diese Personen bilden bei k ≥ 2 kein gemeinsames Schenk-Team. Mehrere Gruppen mit Komma trennen.">ⓘ</span>
+                  <span data-i18n="colExcludeCoGivers">Kein Schenk-Team mit</span>
+                  <span class="tooltip-icon" data-i18n-title="tooltipColExcludeCoGivers" title="Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.">ⓘ</span>
                 </th>
                 <th class="col-actions" aria-label="Actions"></th>
               </tr>
