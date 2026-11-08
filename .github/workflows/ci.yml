@@ -1,0 +1,67 @@
+name: Build, Test & Release Toit Backend
+
+on:
+  push:
+    branches: [main, master]
+    tags:
+      - "v*"
+      - "[0-9]*"
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      TOIT_VERSION: v2.0.0
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Toit SDK (${{ env.TOIT_VERSION }})
+        run: |
+          curl -fsSL "https://github.com/toitlang/toit/releases/download/${TOIT_VERSION}/toit-linux.tar.gz" -o toit-linux.tar.gz
+          sudo tar -xzf toit-linux.tar.gz -C /usr/local --strip-components=1
+          rm toit-linux.tar.gz
+          toit --version
+
+      - name: Static analysis
+        run: make analyze
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Compile native binary
+        run: make build
+
+      - name: Smoke-test compiled binary
+        run: |
+          ./wichteln-server config.json public &
+          SERVER_PID=$!
+          sleep 1
+          curl -fsS http://127.0.0.1:8080/api/meta | grep '"ok":true'
+          kill $SERVER_PID || true
+
+      - name: Package release archive
+        run: |
+          tar -czf wichteln-linux-x86_64.tar.gz wichteln-server public config.json README.md LICENSE
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wichteln-linux-x86_64
+          path: |
+            wichteln-server
+            wichteln-linux-x86_64.tar.gz
+
+      - name: Create GitHub Release on tag
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            wichteln-server
+            wichteln-linux-x86_64.tar.gz

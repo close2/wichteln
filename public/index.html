@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wichteln / Engerl-Bengerl</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-brand">
+      <span class="brand-icon" aria-hidden="true">🎁</span>
+      <div>
+        <h1 data-i18n="appTitle">Wichteln / Engerl-Bengerl</h1>
+        <p class="subtitle" data-i18n="appSubtitle">Team &amp; Classic Secret Santa</p>
+      </div>
+    </div>
+    <div class="header-controls">
+      <label class="lang-switch">
+        <span data-i18n="uiLanguageLabel">UI / Mail</span>
+        <select id="langSelect" aria-label="Language"></select>
+      </label>
+    </div>
+  </header>
+
+  <main class="app-layout">
+    <!-- Left Column: Preset Management, Participants & Constraints -->
+    <section class="column-config">
+      <!-- Presets Card -->
+      <article class="card">
+        <div class="card-header">
+          <h2 data-i18n="presetsTitle">Gruppen / Presets</h2>
+          <div class="btn-row">
+            <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neu</button>
+            <button type="button" id="duplicatePresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnDuplicate">Duplizieren</button>
+            <button type="button" id="exportJsonBtn" class="btn btn-secondary btn-sm" data-i18n="btnExport">Export JSON</button>
+            <label class="btn btn-secondary btn-sm file-btn">
+              <span data-i18n="btnImport">Import JSON</span>
+              <input type="file" id="importJsonInput" accept="application/json" hidden>
+            </label>
+            <button type="button" id="deletePresetBtn" class="btn btn-danger btn-sm" data-i18n="btnDelete">Löschen</button>
+          </div>
+        </div>
+        <div class="preset-bar">
+          <label class="field">
+            <span class="field-label" data-i18n="selectPresetLabel">Aktive Gruppe</span>
+            <select id="presetSelect"></select>
+          </label>
+          <label class="field">
+            <span class="field-label" data-i18n="presetNameLabel">Gruppenname</span>
+            <input type="text" id="presetNameInput" maxlength="60">
+          </label>
+        </div>
+      </article>
+
+      <!-- Participants Card -->
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2>
+              <span data-i18n="participantsTitle">Teilnehmer</span>
+              <span id="participantCountBadge" class="badge">0</span>
+            </h2>
+            <p class="card-hint" data-i18n="participantsHint">E-Mail-Adresse genügt. Name und Ausschlussgruppen (z.B. Paare) sind optional.</p>
+          </div>
+          <div class="btn-row">
+            <button type="button" id="toggleBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnBulkAdd">Schnelleingabe (Liste)</button>
+            <button type="button" id="addParticipantBtn" class="btn btn-primary btn-sm" data-i18n="btnAddParticipant">+ Teilnehmer</button>
+          </div>
+        </div>
+
+        <!-- Optional Bulk Add Drawer -->
+        <div id="bulkAddDrawer" class="bulk-drawer" hidden>
+          <label class="field">
+            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name, Gruppe1|Gruppe2)</span>
+            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, ben@example.org&#10;clara@example.org, Clara, Paar1"></textarea>
+          </label>
+          <div class="btn-row">
+            <button type="button" id="applyBulkBtn" class="btn btn-primary btn-sm" data-i18n="btnApplyBulk">Hinzufügen</button>
+            <button type="button" id="cancelBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnCancel">Abbrechen</button>
+          </div>
+        </div>
+
+        <div class="sync-bar">
+          <label class="sync-toggle">
+            <input type="checkbox" id="twoWaySyncCheckbox" checked>
+            <span data-i18n="twoWaySyncLabel">Ausschlüsse standardmäßig beidseitig synchronisieren (↔ Paare)</span>
+          </label>
+          <small class="field-help" data-i18n="twoWaySyncHint">Tipp: Klicke auf ↔ / → in einem Tag, um zwischen beidseitig und einseitig zu wechseln.</small>
+        </div>
+
+        <div class="table-wrap">
+          <table class="participants-table">
+            <thead>
+              <tr>
+                <th data-i18n="colEmail">E-Mail-Adresse *</th>
+                <th data-i18n="colName">Name (optional)</th>
+                <th data-i18n="colExcludes">Schenkt nicht an / Nicht im Team mit</th>
+                <th class="col-actions" aria-label="Actions"></th>
+              </tr>
+            </thead>
+            <tbody id="participantsTbody"></tbody>
+          </table>
+        </div>
+      </article>
+
+      <!-- Solver Rules Card -->
+      <article class="card">
+        <div class="card-header">
+          <h2 data-i18n="rulesTitle">Regeln &amp; Constraints</h2>
+        </div>
+        <div class="rules-grid">
+          <label class="field">
+            <span class="field-label" data-i18n="ruleGiverGroupSize">Schenkende pro Geschenk (k)</span>
+            <input type="number" id="giverGroupSizeInput" min="1" max="5" value="2">
+            <small class="field-help" data-i18n="ruleGiverGroupSizeHelp">k=1: Klassisches Wichteln (1:1) · k=2: Engerl-Bengerl zu zweit</small>
+          </label>
+
+          <label class="field">
+            <span class="field-label" data-i18n="ruleSampleCount">Anzahl Dry-Run-Beispiele</span>
+            <input type="number" id="sampleCountInput" min="1" max="10" value="3">
+            <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele zufällige Ziehungen beim Dry-Run angezeigt werden</small>
+          </label>
+        </div>
+
+        <div class="checkbox-list">
+          <label class="checkbox-row">
+            <input type="checkbox" id="ruleSameGroupGiverReceiver" checked>
+            <div>
+              <strong data-i18n="ruleSameGroupGRTitle">Keine Geschenke innerhalb derselben Ausschlussgruppe</strong>
+              <p data-i18n="ruleSameGroupGRDesc">Personen mit gleichem Gruppen-Tag (z.B. Paare) beschenken sich nicht gegenseitig.</p>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="ruleSameGroupCoGivers" checked>
+            <div>
+              <strong data-i18n="ruleSameGroupCoTitle">Keine Co-Schenker aus derselben Ausschlussgruppe (k ≥ 2)</strong>
+              <p data-i18n="ruleSameGroupCoDesc">Personen mit gleichem Gruppen-Tag bilden kein gemeinsames Schenk-Team.</p>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="ruleDuplicateCoGivers" checked>
+            <div>
+              <strong data-i18n="ruleDuplicateCoTitle">Keine doppelten Schenk-Teams (k ≥ 2)</strong>
+              <p data-i18n="ruleDuplicateCoDesc">Dasselbe Team {A, B} schenkt nicht gemeinsam an zwei verschiedene Empfänger.</p>
+            </div>
+          </label>
+
+          <label class="checkbox-row">
+            <input type="checkbox" id="ruleDirectReciprocity" checked>
+            <div>
+              <strong data-i18n="ruleReciprocityTitle">Keine direkte Gegenseitigkeit (A ↔ B)</strong>
+              <p data-i18n="ruleReciprocityDesc">Wenn A an B schenkt, darf B nicht gleichzeitig an A schenken.</p>
+            </div>
+          </label>
+        </div>
+      </article>
+    </section>
+
+    <!-- Right Column: Dry-Run & Live Email Dispatch -->
+    <section class="column-actions">
+      <!-- Status Banner -->
+      <div id="statusBanner" class="status-banner" hidden></div>
+
+      <!-- Dry-Run Card -->
+      <article class="card">
+        <div class="card-header">
+          <div>
+            <h2 data-i18n="dryRunTitle">1. Dry-Run (Test-Ziehung prüfen)</h2>
+            <p class="card-hint" data-i18n="dryRunHint">Berechnet Beispiel-Ziehungen am Server und zeigt die E-Mail-Vorschau, ohne E-Mails zu versenden.</p>
+          </div>
+          <button type="button" id="runDryRunBtn" class="btn btn-primary" data-i18n="btnRunDryRun">Dry-Run starten</button>
+        </div>
+
+        <div id="dryRunResults" class="dry-run-results">
+          <p class="empty-state" data-i18n="dryRunEmpty">Noch kein Dry-Run ausgeführt. Klicke auf „Dry-Run starten“, um zufällige Ziehungen zu prüfen.</p>
+        </div>
+      </article>
+
+      <!-- Live Send Card -->
+      <article class="card card-send">
+        <div class="card-header">
+          <div>
+            <h2 data-i18n="liveSendTitle">2. Echte Ziehung &amp; E-Mail-Versand</h2>
+            <p class="card-hint" data-i18n="liveSendHint">Das Backend zieht eine neue geheime Zuordnung und verschickt die E-Mails direkt. Die Zuordnung wird nicht an den Browser übertragen.</p>
+          </div>
+        </div>
+        <div class="send-controls">
+          <label class="field">
+            <span class="field-label" data-i18n="passcodeLabel">Server-Passcode</span>
+            <input type="password" id="passcodeInput" autocomplete="current-password" placeholder="••••••••">
+          </label>
+          <button type="button" id="sendRealEmailsBtn" class="btn btn-accent" data-i18n="btnSendEmails">Geheim auslosen &amp; Mails senden</button>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

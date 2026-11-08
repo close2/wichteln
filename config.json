@@ -1,0 +1,33 @@
+{
+  "port": 8080,
+  "passcode": "change-me-secret",
+  "smtp": {
+    "host": "smtp.example.org",
+    "port": 587,
+    "tlsMode": "starttls",
+    "username": "",
+    "password": "",
+    "fromEmail": "wichteln@example.org",
+    "fromName": "Wichteln / Engerl-Bengerl",
+    "heloDomain": "localhost",
+    "skipCertificateValidation": false
+  },
+  "templates": {
+    "de": {
+      "label": "Deutsch",
+      "subject": "Engerl-Bengerl / Wichteln",
+      "body": "Hallo {{giver_name}},\n\n{{assignments}}\n\nFrohes Wichteln!",
+      "singleAssignment": "Du beschenkst: {{receiver}}",
+      "teamAssignment": "Du beschenkst zusammen mit {{co_givers}}: {{receiver}}",
+      "coGiverJoiner": ", "
+    },
+    "en": {
+      "label": "English",
+      "subject": "Secret Santa Assignment",
+      "body": "Hello {{giver_name}},\n\n{{assignments}}\n\nHappy Secret Santa!",
+      "singleAssignment": "You are gifting: {{receiver}}",
+      "teamAssignment": "Together with {{co_givers}}, you are gifting: {{receiver}}",
+      "coGiverJoiner": ", "
+    }
+  }
+}
