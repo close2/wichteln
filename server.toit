@@ -71,6 +71,8 @@ STATIC-ALLOWLIST_ ::= {
   "/app.js": "text/javascript; charset=utf-8",
 }
 
+FAVICON-SVG_ ::= "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>🎁</text></svg>"
+
 class ServerApp_:
   port/int
   passcode/string
@@ -150,6 +152,10 @@ class ServerApp_:
     send-json-error_ socket 404 "ERR_NOT_FOUND" "Not found"
 
   serve-static_ socket/tcp.Socket path/string -> none:
+    if path == "/favicon.ico":
+      send-response_ socket 200 "OK" "image/svg+xml; charset=utf-8" FAVICON-SVG_.to-byte-array
+      return
+
     lookup := path == "/" ? "/index.html" : path
     content-type := STATIC-ALLOWLIST_.get lookup
     if not content-type:
@@ -380,6 +386,9 @@ class ServerApp_:
       "Content-Type: $content-type",
       "Content-Length: $body.size",
       "Connection: close",
+      "Cache-Control: no-cache, no-store, must-revalidate",
+      "Pragma: no-cache",
+      "Expires: 0",
       "X-Content-Type-Options: nosniff",
       "X-Frame-Options: DENY",
       "Referrer-Policy: no-referrer",

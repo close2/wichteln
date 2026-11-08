@@ -13,6 +13,8 @@ export const I18N = {
     btnDelete: "Löschen",
     selectPresetLabel: "Aktive Runde",
     presetNameLabel: "Name der Runde",
+    presetFriendsName: "Engerl-Bengerl (Beispiel mit 9 Personen)",
+    presetClassicName: "Klassisches Wichteln (Beispiel mit 5 Personen)",
     participantsTitle: "Teilnehmer",
     participantsHint: "E-Mail-Adresse genügt (Name ist optional und dient nur der Anzeige in der Mail).",
     btnLoadExample: "Beispieldaten",
@@ -25,6 +27,13 @@ export const I18N = {
     explainCoGiverTitle: "🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):",
     explainCoGiverText:
       "Wähle Personen aus, mit denen diese Person bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden soll.",
+    // Legacy aliases for backwards compatibility with any cached HTML
+    explainReceiverGroupTitle: "🚫 Schenkt nicht an (Empfänger-Ausschluss):",
+    explainReceiverGroupText:
+      "Wähle direkt die Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.",
+    explainCoGiverGroupTitle: "🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):",
+    explainCoGiverGroupText:
+      "Wähle Personen aus, mit denen diese Person bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden soll.",
     twoWaySyncLabel: "„Schenkt nicht an“ standardmäßig beidseitig eintragen (↔ Paare)",
     twoWaySyncHint:
       "Tipp: Klicke auf ↔ / → in einem Tag, um jederzeit zwischen beidseitig (↔) und einseitig (→) zu wechseln.",
@@ -33,12 +42,19 @@ export const I18N = {
     btnCancel: "Abbrechen",
     colEmail: "E-Mail-Adresse *",
     colName: "Name (optional)",
+    namePlaceholder: "Optional",
     colExcludeReceivers: "Schenkt nicht an",
     colExcludeCoGivers: "Kein Schenk-Team mit",
+    colReceiverGroups: "Schenkt nicht an",
+    colCoGiverGroups: "Kein Schenk-Team mit",
     tooltipColName: "Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.",
     tooltipColExcludeReceivers:
       "Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig (Paar), → = nur einseitig (per Klick umschaltbar).",
     tooltipColExcludeCoGivers:
+      "Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.",
+    tooltipColReceiverGroups:
+      "Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig (Paar), → = nur einseitig (per Klick umschaltbar).",
+    tooltipColCoGiverGroups:
       "Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.",
     addExcludeReceiverPlaceholder: "+ Nicht beschenken…",
     addExcludeCoGiverPlaceholder: "+ Kein Team mit…",
@@ -77,6 +93,8 @@ export const I18N = {
     confirmLoadExample: "Aktuelle Teilnehmerliste durch die Beispieldaten ersetzen?",
     confirmLiveSend: "Jetzt geheim auslosen und echte E-Mails an {count} Teilnehmer senden?",
     statusDryRunOk: "{count} eindeutige Beispiel-Ziehung(en) erfolgreich berechnet.",
+    statusLoadedExample: "Beispieldaten wurden geladen.",
+    statusClearedParticipants: "Teilnehmerliste wurde geleert.",
     warnOnlyOneSolution:
       "⚠️ Achtung: Durch die engen Ausschlüsse existiert mathematisch NUR EINE EINZIGE gültige Lösung! Die Ziehung ist dadurch komplett vorhersehbar (nicht geheim).",
     warnFewSolutions:
@@ -116,6 +134,8 @@ export const I18N = {
     btnDelete: "Delete",
     selectPresetLabel: "Active Round",
     presetNameLabel: "Round Name",
+    presetFriendsName: "Engerl-Bengerl (Example with 9 People)",
+    presetClassicName: "Classic Secret Santa (Example with 5 People)",
     participantsTitle: "Participants",
     participantsHint: "Email address is enough (Name is optional and only used as the display label in the email).",
     btnLoadExample: "Load Example",
@@ -128,6 +148,13 @@ export const I18N = {
     explainCoGiverTitle: "🤝 Not on Team With (Co-Giver Exclusion):",
     explainCoGiverText:
       "Pick people this participant should not be paired with on the same giving team when k ≥ 2.",
+    // Legacy aliases
+    explainReceiverGroupTitle: "🚫 Does Not Gift (Receiver Exclusion):",
+    explainReceiverGroupText:
+      "Pick people this participant should not buy a gift for (e.g. partner). They are still allowed to co-organize a gift together for a third person.",
+    explainCoGiverGroupTitle: "🤝 Not on Team With (Co-Giver Exclusion):",
+    explainCoGiverGroupText:
+      "Pick people this participant should not be paired with on the same giving team when k ≥ 2.",
     twoWaySyncLabel: "Add 'Does not gift' exclusions two-way by default (↔ Couples)",
     twoWaySyncHint: "Tip: Click ↔ / → on any chip to switch between two-way (↔) and one-way (→) exclusion at any time.",
     bulkAddHelp: "Email addresses (comma- or line-separated, or format: email, Name)",
@@ -135,12 +162,19 @@ export const I18N = {
     btnCancel: "Cancel",
     colEmail: "Email Address *",
     colName: "Name (optional)",
+    namePlaceholder: "Optional",
     colExcludeReceivers: "Does Not Gift",
     colExcludeCoGivers: "No Team With",
+    colReceiverGroups: "Does Not Gift",
+    colCoGiverGroups: "No Team With",
     tooltipColName: "Displayed in the email greeting and assignment lines. Falls back to the email address if left empty.",
     tooltipColExcludeReceivers:
       "Select people this participant must not gift. ↔ = mutual (couple), → = one-way only (click icon to toggle).",
     tooltipColExcludeCoGivers:
+      "Select people this participant must not be paired with on the same giving team when k ≥ 2.",
+    tooltipColReceiverGroups:
+      "Select people this participant must not gift. ↔ = mutual (couple), → = one-way only (click icon to toggle).",
+    tooltipColCoGiverGroups:
       "Select people this participant must not be paired with on the same giving team when k ≥ 2.",
     addExcludeReceiverPlaceholder: "+ Don't gift…",
     addExcludeCoGiverPlaceholder: "+ No team with…",
@@ -171,34 +205,38 @@ export const I18N = {
     passcodeLabel: "Server Passcode",
     btnSendEmails: "Draw Secretly & Send Emails",
     sampleTabLabel: "Sample #{n}",
-    tableColReceiver: "Receiver",
+    tableColReceiver: "Gift Receiver",
     tableColGivers: "Giver Team",
     mailPreviewSummary: "Email Previews ({count} emails)",
-    confirmDeletePreset: "Are you sure you want to delete this saved round?",
+    confirmDeletePreset: "Really delete this saved round?",
     confirmClearParticipants: "Clear all participants in this round?",
-    confirmLoadExample: "Replace the current participant list with example participants?",
-    confirmLiveSend: "Run the secret draw now and send real emails to {count} participants?",
-    statusDryRunOk: "Successfully generated {count} distinct sample draw(s).",
+    confirmLoadExample: "Replace current participants with the example data?",
+    confirmLiveSend: "Run secret draw now and send real emails to {count} participants?",
+    statusDryRunOk: "Calculated {count} distinct sample draw(s).",
+    statusLoadedExample: "Example participants loaded.",
+    statusClearedParticipants: "Participant list cleared.",
     warnOnlyOneSolution:
-      "⚠️ Warning: Due to tight exclusions, ONLY ONE valid solution exists mathematically! The draw is completely deterministic (not secret).",
-    warnFewSolutions: "⚠️ Note: Only {unique} distinct valid solutions exist in total (requested: {requested}).",
+      "⚠️ Warning: Due to tight exclusions, ONLY ONE valid mathematical solution exists! The draw is completely predictable (not secret).",
+    warnFewSolutions:
+      "⚠️ Note: Only {unique} distinct valid solutions exist in total (requested: {requested}).",
     warnForcedReceivers:
-      "⚠️ Note: The following receivers were assigned the exact same giver team across all samples: {receivers}",
-    statusLiveSendOk: "Success! {count} secret emails were generated and sent.",
+      "⚠️ Note: The following receivers get the exact same giver team in every sampled draw: {receivers}",
+    statusLiveSendOk: "Success! {count} emails have been secretly drawn and sent.",
     statusImportOk: "Rounds imported successfully.",
     newPresetDefaultName: "New Secret Santa Round",
     copySuffix: " (Copy)",
     errors: {
-      ERR_BAD_JSON: "Malformed request payload.",
+      ERR_BAD_JSON: "Invalid request data.",
       ERR_INVALID_LANG: "Selected language is not supported by the server.",
       ERR_INVALID_RULES: "Invalid rule settings (k must be smaller than participant count).",
-      ERR_PARTICIPANT_COUNT: "Too few or too many participants (minimum 3 required).",
-      ERR_INVALID_EMAIL: "One or more email addresses are missing or invalid.",
-      ERR_INVALID_NAME: "Invalid participant name (no URLs or special chars like @, :, / allowed).",
-      ERR_DUPLICATE_PARTICIPANT: "Duplicate email address or participant label found.",
+      ERR_PARTICIPANT_COUNT: "Too few or too many participants (at least 3 required).",
+      ERR_INVALID_EMAIL: "At least one email address is missing or invalid.",
+      ERR_INVALID_NAME: "Invalid name (no URLs or special characters like @, :, / allowed).",
+      ERR_DUPLICATE_PARTICIPANT: "Duplicate email address or duplicate name found.",
       ERR_AUTH_FAILED: "Invalid server passcode.",
       ERR_PAYLOAD_TOO_LARGE: "Request payload is too large.",
-      ERR_UNSATISFIABLE: "No valid assignment possible! Please relax options or check your exclusions.",
+      ERR_UNSATISFIABLE:
+        "No valid assignment possible! Please relax options or check your exclusions.",
       ERR_RATE_LIMITED: "Too many requests. Please wait a few minutes.",
       ERR_SMTP_FAILED: "Failed to send emails via SMTP server.",
       ERR_NETWORK: "Could not reach backend server."
@@ -208,7 +246,8 @@ export const I18N = {
 
 export function translate(lang, key, vars = {}) {
   const pack = I18N[lang] || I18N.de;
-  let str = pack[key] ?? I18N.de[key] ?? key;
+  let str = pack[key] ?? I18N.de[key] ?? null;
+  if (str === null) return null;
   for (const [k, v] of Object.entries(vars)) {
     str = str.replaceAll(`{${k}}`, String(v));
   }

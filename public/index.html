@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wichteln / Engerl-Bengerl</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
+  <link rel="stylesheet" href="./styles.css?v=1.2.1">
 </head>
 <body>
   <header class="app-header">
@@ -75,7 +76,7 @@
         <div class="info-explainer">
           <div class="info-item">
             <strong data-i18n="explainReceiverTitle">🚫 Schenkt nicht an (Empfänger-Ausschluss):</strong>
-            <span data-i18n="explainReceiverText">Wähle Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.</span>
+            <span data-i18n="explainReceiverText">Wähle direkt die Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.</span>
           </div>
           <div class="info-item">
             <strong data-i18n="explainCoGiverTitle">🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):</strong>
@@ -111,15 +112,15 @@
                 </th>
                 <th>
                   <span data-i18n="colName">Name (optional)</span>
-                  <span class="tooltip-icon" data-i18n-title="tooltipColName" title="Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.">ⓘ</span>
+                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColName" data-tooltip="Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.">ⓘ</span>
                 </th>
                 <th>
                   <span data-i18n="colExcludeReceivers">Schenkt nicht an</span>
-                  <span class="tooltip-icon" data-i18n-title="tooltipColExcludeReceivers" title="Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig, → = nur einseitig (klickbar).">ⓘ</span>
+                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeReceivers" data-tooltip="Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig (Paar), → = nur einseitig (klickbar).">ⓘ</span>
                 </th>
                 <th>
                   <span data-i18n="colExcludeCoGivers">Kein Schenk-Team mit</span>
-                  <span class="tooltip-icon" data-i18n-title="tooltipColExcludeCoGivers" title="Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.">ⓘ</span>
+                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeCoGivers" data-tooltip="Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.">ⓘ</span>
                 </th>
                 <th class="col-actions" aria-label="Actions"></th>
               </tr>
@@ -138,7 +139,7 @@
           <label class="field">
             <span class="field-label">
               <span data-i18n="ruleGiverGroupSize">Schenkende pro Geschenk (k)</span>
-              <span class="tooltip-icon" data-i18n-title="tooltipGiverGroupSize" title="Wie viele Personen legen für ein Geschenk zusammen? Gleichzeitig beteiligt sich jede Person an k Geschenken.">ⓘ</span>
+              <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipGiverGroupSize" data-tooltip="Wie viele Personen legen für ein Geschenk zusammen? Gleichzeitig beteiligt sich jede Person an k Geschenken.">ⓘ</span>
             </span>
             <input type="number" id="giverGroupSizeInput" min="1" max="5" value="2">
             <small class="field-help" data-i18n="ruleGiverGroupSizeHelp">k=1: Klassisches Wichteln (1:1) · k=2: Engerl-Bengerl zu zweit (jeder schenkt 2× im Team und bekommt 1 Geschenk)</small>
@@ -147,7 +148,7 @@
           <label class="field">
             <span class="field-label">
               <span data-i18n="ruleSampleCount">Anzahl Dry-Run-Beispiele</span>
-              <span class="tooltip-icon" data-i18n-title="tooltipSampleCount" title="Berechnet mehrere unterschiedliche gültige Ziehungen zur Vorschau.">ⓘ</span>
+              <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipSampleCount" data-tooltip="Berechnet mehrere unterschiedliche gültige Ziehungen zur Vorschau.">ⓘ</span>
             </span>
             <input type="number" id="sampleCountInput" min="1" max="10" value="3">
             <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele verschiedene zufällige Ziehungen beim Dry-Run angezeigt werden</small>
@@ -202,17 +203,17 @@
             <p class="card-hint" data-i18n="liveSendHint">Das Backend zieht eine neue geheime Zuordnung und verschickt die E-Mails direkt. Die Zuordnung wird nicht an den Browser übertragen.</p>
           </div>
         </div>
-        <div class="send-controls">
+        <form id="liveSendForm" class="send-controls">
           <label class="field">
             <span class="field-label" data-i18n="passcodeLabel">Server-Passcode</span>
             <input type="password" id="passcodeInput" autocomplete="current-password" placeholder="••••••••">
           </label>
-          <button type="button" id="sendRealEmailsBtn" class="btn btn-accent" data-i18n="btnSendEmails">Geheim auslosen &amp; Mails senden</button>
-        </div>
+          <button type="submit" id="sendRealEmailsBtn" class="btn btn-accent" data-i18n="btnSendEmails">Geheim auslosen &amp; Mails senden</button>
+        </form>
       </article>
     </section>
   </main>
 
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="./app.js?v=1.2.1"></script>
 </body>
 </html>
