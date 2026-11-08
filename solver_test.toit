@@ -11,7 +11,7 @@ test-k1-classic:
     solver.Participant --email="d@example.org" --name="Dave" --groups=["G2"],
     solver.Participant --email="e@example.org" --name="" --groups=[],
   ]
-  rules := solver.Rules --giver-group-size=1
+  rules := solver.Rules --giver-group-size=1 --prevent-direct-reciprocity=true
   assigned := solver.solve participants rules
   expect-not-null assigned
   give-counts := List participants.size 0
@@ -31,6 +31,30 @@ test-k1-classic:
     expect (not (other-givers.contains r))
 
   give-counts.do: expect-equals 1 it
+
+test-5-participants-k2-with-couple:
+  // 5 participants (Alice, Bob, Carol, Dave, Eve) where Alice <-> Bob exclude each other as receivers
+  // (exclude-receivers), but ARE allowed to be co-givers together, while Carol <-> Dave exclude each other
+  // as co-givers (exclude-co-givers), with k=2!
+  participants := [
+    solver.Participant --id="cw-1" --email="alice@example.org" --name="Alice" --exclude-receivers=["cw-2"],
+    solver.Participant --id="cw-2" --email="bob@example.org" --name="Bob" --exclude-receivers=["cw-1"],
+    solver.Participant --id="cw-3" --email="carol@example.org" --name="Carol" --exclude-co-givers=["cw-4"],
+    solver.Participant --id="cw-4" --email="dave@example.org" --name="Dave" --exclude-co-givers=["cw-3"],
+    solver.Participant --id="cw-5" --email="eve@example.org" --name="Eve",
+  ]
+  rules := solver.Rules --giver-group-size=2 --sample-count=3
+  distinct := solver.solve-distinct participants rules
+  solutions := distinct["solutions"] as List
+  expect (solutions.size >= 1)
+  solutions.do: | sol/List |
+    // Alice (0) cannot gift Bob (1), Bob (1) cannot gift Alice (0)
+    expect (not ((sol[0] as List).contains 1))
+    expect (not ((sol[1] as List).contains 0))
+    // Carol (2) and Dave (3) can never be co-givers on the same receiver
+    for r := 0; r < 5; r++:
+      team := sol[r] as List
+      expect (not (team.contains 2 and team.contains 3))
 
 test-k2-engerlbengerl:
   // 9 participants with 3 couples
@@ -187,6 +211,7 @@ test-one-way-directed-exclusions:
 
 main:
   test-k1-classic
+  test-5-participants-k2-with-couple
   test-k2-engerlbengerl
   test-k3-team
   test-validation-anti-spam

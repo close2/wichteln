@@ -95,7 +95,8 @@
               <tr>
                 <th data-i18n="colEmail">E-Mail-Adresse *</th>
                 <th data-i18n="colName">Name (optional)</th>
-                <th data-i18n="colExcludes">Schenkt nicht an / Nicht im Team mit</th>
+                <th data-i18n="colExcludeReceivers">Schenkt nicht an (Empfänger)</th>
+                <th data-i18n="colExcludeCoGivers">Kein Team mit (Co-Schenker)</th>
                 <th class="col-actions" aria-label="Actions"></th>
               </tr>
             </thead>
@@ -125,22 +126,6 @@
 
         <div class="checkbox-list">
           <label class="checkbox-row">
-            <input type="checkbox" id="ruleSameGroupGiverReceiver" checked>
-            <div>
-              <strong data-i18n="ruleSameGroupGRTitle">Keine Geschenke innerhalb derselben Ausschlussgruppe</strong>
-              <p data-i18n="ruleSameGroupGRDesc">Personen mit gleichem Gruppen-Tag (z.B. Paare) beschenken sich nicht gegenseitig.</p>
-            </div>
-          </label>
-
-          <label class="checkbox-row">
-            <input type="checkbox" id="ruleSameGroupCoGivers" checked>
-            <div>
-              <strong data-i18n="ruleSameGroupCoTitle">Keine Co-Schenker aus derselben Ausschlussgruppe (k ≥ 2)</strong>
-              <p data-i18n="ruleSameGroupCoDesc">Personen mit gleichem Gruppen-Tag bilden kein gemeinsames Schenk-Team.</p>
-            </div>
-          </label>
-
-          <label class="checkbox-row">
             <input type="checkbox" id="ruleDuplicateCoGivers" checked>
             <div>
               <strong data-i18n="ruleDuplicateCoTitle">Keine doppelten Schenk-Teams (k ≥ 2)</strong>
@@ -149,7 +134,7 @@
           </label>
 
           <label class="checkbox-row">
-            <input type="checkbox" id="ruleDirectReciprocity" checked>
+            <input type="checkbox" id="ruleDirectReciprocity">
             <div>
               <strong data-i18n="ruleReciprocityTitle">Keine direkte Gegenseitigkeit (A ↔ B)</strong>
               <p data-i18n="ruleReciprocityDesc">Wenn A an B schenkt, darf B nicht gleichzeitig an A schenken.</p>

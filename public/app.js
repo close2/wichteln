@@ -35,8 +35,6 @@ const els = {
   participantsTbody: document.getElementById("participantsTbody"),
   giverGroupSizeInput: document.getElementById("giverGroupSizeInput"),
   sampleCountInput: document.getElementById("sampleCountInput"),
-  ruleSameGroupGiverReceiver: document.getElementById("ruleSameGroupGiverReceiver"),
-  ruleSameGroupCoGivers: document.getElementById("ruleSameGroupCoGivers"),
   ruleDuplicateCoGivers: document.getElementById("ruleDuplicateCoGivers"),
   ruleDirectReciprocity: document.getElementById("ruleDirectReciprocity"),
   statusBanner: document.getElementById("statusBanner"),
@@ -115,6 +113,112 @@ function renderPresetSelect() {
   els.deletePresetBtn.disabled = state.presets.length <= 1;
 }
 
+function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey, allowOneWay) {
+  const td = document.createElement("td");
+  const wrap = document.createElement("div");
+  wrap.className = "excludes-cell";
+
+  const list = participant[fieldName];
+  for (const targetId of list) {
+    const targetEntry = byId.get(targetId);
+    if (!targetEntry) continue;
+    const targetP = targetEntry.p;
+    const targetList = targetP[fieldName];
+    const isMutual = Array.isArray(targetList) && targetList.includes(participant.id);
+
+    const chip = document.createElement("span");
+    chip.className = !allowOneWay || isMutual ? "exclude-chip" : "exclude-chip one-way";
+
+    if (allowOneWay) {
+      const dirBtn = document.createElement("button");
+      dirBtn.type = "button";
+      dirBtn.className = "exclude-dir-btn";
+      dirBtn.textContent = isMutual ? "↔" : "→";
+      dirBtn.title = isMutual ? t("dirTwoWayTitle") : t("dirOneWayTitle");
+      dirBtn.addEventListener("click", async () => {
+        if (!Array.isArray(targetP[fieldName])) targetP[fieldName] = [];
+        if (isMutual) {
+          targetP[fieldName] = targetP[fieldName].filter((id) => id !== participant.id);
+        } else if (!targetP[fieldName].includes(participant.id)) {
+          targetP[fieldName].push(participant.id);
+        }
+        await persistActivePreset();
+        renderActivePreset();
+      });
+      chip.appendChild(dirBtn);
+    } else {
+      const symIcon = document.createElement("span");
+      symIcon.textContent = "↔";
+      symIcon.style.fontWeight = "700";
+      chip.appendChild(symIcon);
+    }
+
+    const labelSpan = document.createElement("span");
+    labelSpan.textContent = participantShortLabel(targetP, targetEntry.i);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "exclude-remove-btn";
+    removeBtn.textContent = "✕";
+    removeBtn.addEventListener("click", async () => {
+      participant[fieldName] = participant[fieldName].filter((id) => id !== targetId);
+      if ((!allowOneWay || state.twoWaySync) && Array.isArray(targetP[fieldName])) {
+        targetP[fieldName] = targetP[fieldName].filter((id) => id !== participant.id);
+      }
+      await persistActivePreset();
+      renderActivePreset();
+    });
+
+    chip.append(labelSpan, removeBtn);
+    wrap.appendChild(chip);
+  }
+
+  const availableOthers = preset.participants
+    .map((other, otherIdx) => ({ other, otherIdx }))
+    .filter(({ other }) => other.id !== participant.id && !list.includes(other.id));
+
+  if (availableOthers.length > 0) {
+    const picker = document.createElement("select");
+    picker.className = "exclude-picker";
+    const defaultOpt = document.createElement("option");
+    defaultOpt.value = "";
+    defaultOpt.textContent = t(placeholderKey);
+    picker.appendChild(defaultOpt);
+
+    for (const { other, otherIdx } of availableOthers) {
+      const opt = document.createElement("option");
+      opt.value = other.id;
+      opt.textContent = participantLabel(other, otherIdx);
+      picker.appendChild(opt);
+    }
+
+    picker.addEventListener("change", async () => {
+      const chosenId = picker.value;
+      if (!chosenId) return;
+      if (!participant[fieldName].includes(chosenId)) {
+        participant[fieldName].push(chosenId);
+      }
+      // Co-giver exclusions are always symmetric; receiver exclusions follow state.twoWaySync
+      if (!allowOneWay || state.twoWaySync) {
+        const otherEntry = byId.get(chosenId);
+        if (otherEntry) {
+          if (!Array.isArray(otherEntry.p[fieldName])) otherEntry.p[fieldName] = [];
+          if (!otherEntry.p[fieldName].includes(participant.id)) {
+            otherEntry.p[fieldName].push(participant.id);
+          }
+        }
+      }
+      await persistActivePreset();
+      renderActivePreset();
+    });
+
+    wrap.appendChild(picker);
+  }
+
+  td.appendChild(wrap);
+  return td;
+}
+
 function renderActivePreset() {
   const preset = getActivePreset();
   if (!preset) return;
@@ -125,18 +229,21 @@ function renderActivePreset() {
 
   els.giverGroupSizeInput.value = String(preset.rules.giverGroupSize ?? 2);
   els.sampleCountInput.value = String(preset.rules.sampleCount ?? 3);
-  els.ruleSameGroupGiverReceiver.checked = preset.rules.preventSameGroupGiverReceiver !== false;
-  els.ruleSameGroupCoGivers.checked = preset.rules.preventSameGroupCoGivers !== false;
   els.ruleDuplicateCoGivers.checked = preset.rules.preventDuplicateCoGiverPairs !== false;
-  els.ruleDirectReciprocity.checked = preset.rules.preventDirectReciprocity !== false;
+  els.ruleDirectReciprocity.checked = preset.rules.preventDirectReciprocity === true;
 
   const byId = new Map(preset.participants.map((p, i) => [p.id, { p, i }]));
 
   els.participantsTbody.replaceChildren();
   preset.participants.forEach((participant, idx) => {
-    if (!Array.isArray(participant.excludes)) participant.excludes = [];
-    // Clean up any stale references to deleted participants
-    participant.excludes = participant.excludes.filter((id) => id !== participant.id && byId.has(id));
+    if (!Array.isArray(participant.excludeReceivers)) participant.excludeReceivers = [];
+    if (!Array.isArray(participant.excludeCoGivers)) participant.excludeCoGivers = [];
+    participant.excludeReceivers = participant.excludeReceivers.filter(
+      (id) => id !== participant.id && byId.has(id)
+    );
+    participant.excludeCoGivers = participant.excludeCoGivers.filter(
+      (id) => id !== participant.id && byId.has(id)
+    );
 
     const tr = document.createElement("tr");
 
@@ -167,101 +274,25 @@ function renderActivePreset() {
     });
     tdName.appendChild(nameInput);
 
-    // Interactive Exclusions cell (two-way ↔ or one-way →)
-    const tdExcludes = document.createElement("td");
-    const excludesWrap = document.createElement("div");
-    excludesWrap.className = "excludes-cell";
+    // Column 3: Receiver Exclusions ("Schenkt nicht an", two-way ↔ or one-way →)
+    const tdExcludeReceivers = buildExcludesCell(
+      preset,
+      participant,
+      byId,
+      "excludeReceivers",
+      "addExcludeReceiverPlaceholder",
+      true
+    );
 
-    for (const targetId of participant.excludes) {
-      const targetEntry = byId.get(targetId);
-      if (!targetEntry) continue;
-      const targetP = targetEntry.p;
-      const isMutual = Array.isArray(targetP.excludes) && targetP.excludes.includes(participant.id);
-
-      const chip = document.createElement("span");
-      chip.className = isMutual ? "exclude-chip" : "exclude-chip one-way";
-
-      // Direction toggle button (↔ vs →)
-      const dirBtn = document.createElement("button");
-      dirBtn.type = "button";
-      dirBtn.className = "exclude-dir-btn";
-      dirBtn.textContent = isMutual ? "↔" : "→";
-      dirBtn.title = isMutual ? t("dirTwoWayTitle") : t("dirOneWayTitle");
-      dirBtn.addEventListener("click", async () => {
-        if (!Array.isArray(targetP.excludes)) targetP.excludes = [];
-        if (isMutual) {
-          targetP.excludes = targetP.excludes.filter((id) => id !== participant.id);
-        } else if (!targetP.excludes.includes(participant.id)) {
-          targetP.excludes.push(participant.id);
-        }
-        await persistActivePreset();
-        renderActivePreset();
-      });
-
-      const labelSpan = document.createElement("span");
-      labelSpan.textContent = participantShortLabel(targetP, targetEntry.i);
-
-      // Remove button
-      const removeBtn = document.createElement("button");
-      removeBtn.type = "button";
-      removeBtn.className = "exclude-remove-btn";
-      removeBtn.textContent = "✕";
-      removeBtn.addEventListener("click", async () => {
-        participant.excludes = participant.excludes.filter((id) => id !== targetId);
-        if (state.twoWaySync && Array.isArray(targetP.excludes)) {
-          targetP.excludes = targetP.excludes.filter((id) => id !== participant.id);
-        }
-        await persistActivePreset();
-        renderActivePreset();
-      });
-
-      chip.append(dirBtn, labelSpan, removeBtn);
-      excludesWrap.appendChild(chip);
-    }
-
-    // Dropdown to add another participant to exclusions
-    const availableOthers = preset.participants
-      .map((other, otherIdx) => ({ other, otherIdx }))
-      .filter(({ other }) => other.id !== participant.id && !participant.excludes.includes(other.id));
-
-    if (availableOthers.length > 0) {
-      const picker = document.createElement("select");
-      picker.className = "exclude-picker";
-      const defaultOpt = document.createElement("option");
-      defaultOpt.value = "";
-      defaultOpt.textContent = t("addExcludePlaceholder");
-      picker.appendChild(defaultOpt);
-
-      for (const { other, otherIdx } of availableOthers) {
-        const opt = document.createElement("option");
-        opt.value = other.id;
-        opt.textContent = participantLabel(other, otherIdx);
-        picker.appendChild(opt);
-      }
-
-      picker.addEventListener("change", async () => {
-        const chosenId = picker.value;
-        if (!chosenId) return;
-        if (!participant.excludes.includes(chosenId)) {
-          participant.excludes.push(chosenId);
-        }
-        if (state.twoWaySync) {
-          const otherEntry = byId.get(chosenId);
-          if (otherEntry) {
-            if (!Array.isArray(otherEntry.p.excludes)) otherEntry.p.excludes = [];
-            if (!otherEntry.p.excludes.includes(participant.id)) {
-              otherEntry.p.excludes.push(participant.id);
-            }
-          }
-        }
-        await persistActivePreset();
-        renderActivePreset();
-      });
-
-      excludesWrap.appendChild(picker);
-    }
-
-    tdExcludes.appendChild(excludesWrap);
+    // Column 4: Co-Giver Exclusions ("Kein Team mit", always mutual ↔)
+    const tdExcludeCoGivers = buildExcludesCell(
+      preset,
+      participant,
+      byId,
+      "excludeCoGivers",
+      "addExcludeCoGiverPlaceholder",
+      false
+    );
 
     // Remove participant row cell
     const tdRemove = document.createElement("td");
@@ -274,8 +305,11 @@ function renderActivePreset() {
       const removedId = participant.id;
       preset.participants.splice(idx, 1);
       for (const other of preset.participants) {
-        if (Array.isArray(other.excludes)) {
-          other.excludes = other.excludes.filter((id) => id !== removedId);
+        if (Array.isArray(other.excludeReceivers)) {
+          other.excludeReceivers = other.excludeReceivers.filter((id) => id !== removedId);
+        }
+        if (Array.isArray(other.excludeCoGivers)) {
+          other.excludeCoGivers = other.excludeCoGivers.filter((id) => id !== removedId);
         }
       }
       await persistActivePreset();
@@ -284,7 +318,7 @@ function renderActivePreset() {
     });
     tdRemove.appendChild(removeRowBtn);
 
-    tr.append(tdEmail, tdName, tdExcludes, tdRemove);
+    tr.append(tdEmail, tdName, tdExcludeReceivers, tdExcludeCoGivers, tdRemove);
     els.participantsTbody.appendChild(tr);
   });
 }
@@ -477,7 +511,7 @@ function parseBulkEntries(rawText) {
     const parts = line.split(",").map((s) => s.trim()).filter(Boolean);
     if (parts.length > 1 && parts.every((p) => p.includes("@"))) {
       for (const email of parts) {
-        entries.push({ id: makeParticipantId(), email, name: "", excludes: [] });
+        entries.push({ id: makeParticipantId(), email, name: "", excludeReceivers: [], excludeCoGivers: [] });
       }
     } else {
       const email = parts[0] || "";
@@ -486,7 +520,7 @@ function parseBulkEntries(rawText) {
         .split("|")
         .map((g) => g.trim())
         .filter(Boolean);
-      entries.push({ id: makeParticipantId(), email, name, groups, excludes: [] });
+      entries.push({ id: makeParticipantId(), email, name, groups, excludeReceivers: [], excludeCoGivers: [] });
     }
   }
   return entries;
@@ -550,16 +584,14 @@ async function init() {
       name: t("newPresetDefaultName"),
       rules: {
         giverGroupSize: 2,
-        preventSameGroupGiverReceiver: true,
-        preventSameGroupCoGivers: true,
         preventDuplicateCoGiverPairs: true,
-        preventDirectReciprocity: true,
+        preventDirectReciprocity: false,
         sampleCount: 3
       },
       participants: [
-        { id: makeParticipantId(), email: "", name: "", excludes: [] },
-        { id: makeParticipantId(), email: "", name: "", excludes: [] },
-        { id: makeParticipantId(), email: "", name: "", excludes: [] }
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
+        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] }
       ]
     };
     state.presets.push(newPreset);
@@ -638,7 +670,13 @@ async function init() {
   els.addParticipantBtn.addEventListener("click", async () => {
     const preset = getActivePreset();
     if (!preset) return;
-    preset.participants.push({ id: makeParticipantId(), email: "", name: "", excludes: [] });
+    preset.participants.push({
+      id: makeParticipantId(),
+      email: "",
+      name: "",
+      excludeReceivers: [],
+      excludeCoGivers: []
+    });
     await persistActivePreset();
     renderPresetSelect();
     renderActivePreset();
@@ -675,8 +713,6 @@ async function init() {
     preset.rules = {
       giverGroupSize: Math.max(1, Math.min(5, Number.parseInt(els.giverGroupSizeInput.value, 10) || 2)),
       sampleCount: Math.max(1, Math.min(10, Number.parseInt(els.sampleCountInput.value, 10) || 3)),
-      preventSameGroupGiverReceiver: els.ruleSameGroupGiverReceiver.checked,
-      preventSameGroupCoGivers: els.ruleSameGroupCoGivers.checked,
       preventDuplicateCoGiverPairs: els.ruleDuplicateCoGivers.checked,
       preventDirectReciprocity: els.ruleDirectReciprocity.checked
     };
@@ -685,8 +721,6 @@ async function init() {
 
   els.giverGroupSizeInput.addEventListener("change", syncRules);
   els.sampleCountInput.addEventListener("change", syncRules);
-  els.ruleSameGroupGiverReceiver.addEventListener("change", syncRules);
-  els.ruleSameGroupCoGivers.addEventListener("change", syncRules);
   els.ruleDuplicateCoGivers.addEventListener("change", syncRules);
   els.ruleDirectReciprocity.addEventListener("change", syncRules);
 

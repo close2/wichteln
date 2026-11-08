@@ -1,16 +1,13 @@
 // Native IndexedDB persistence for participant groups/presets and constraint rules.
-// Pre-seeded with the historical groups from wichteln.toit and engerlbengerl.
 
 const DB_NAME = "wichteln_app_db";
-const DB_VERSION = 1;
+const DB_VERSION = 3;
 const STORE_PRESETS = "presets";
 
 const DEFAULT_RULES = {
   giverGroupSize: 2,
-  preventSameGroupGiverReceiver: true,
-  preventSameGroupCoGivers: true,
   preventDuplicateCoGiverPairs: true,
-  preventDirectReciprocity: true,
+  preventDirectReciprocity: false,
   sampleCount: 3
 };
 
@@ -20,15 +17,15 @@ export const SEED_PRESETS = [
     name: "Engerl-Bengerl (Beispiel mit Paaren)",
     rules: { ...DEFAULT_RULES, giverGroupSize: 2 },
     participants: [
-      { id: "p-anna", email: "anna@example.org", name: "Anna", excludes: ["p-ben"] },
-      { id: "p-ben", email: "ben@example.org", name: "Ben", excludes: ["p-anna"] },
-      { id: "p-clara", email: "clara@example.org", name: "Clara", excludes: [] },
-      { id: "p-david", email: "david@example.org", name: "David", excludes: ["p-elena"] },
-      { id: "p-elena", email: "elena@example.org", name: "Elena", excludes: ["p-david"] },
-      { id: "p-felix", email: "felix@example.org", name: "Felix", excludes: ["p-greta"] },
-      { id: "p-greta", email: "greta@example.org", name: "Greta", excludes: ["p-felix"] },
-      { id: "p-hugo", email: "hugo@example.org", name: "Hugo", excludes: [] },
-      { id: "p-iris", email: "iris@example.org", name: "Iris", excludes: [] }
+      { id: "p-anna", email: "anna@example.org", name: "Anna", excludeReceivers: ["p-ben"], excludeCoGivers: [] },
+      { id: "p-ben", email: "ben@example.org", name: "Ben", excludeReceivers: ["p-anna"], excludeCoGivers: [] },
+      { id: "p-clara", email: "clara@example.org", name: "Clara", excludeReceivers: [], excludeCoGivers: [] },
+      { id: "p-david", email: "david@example.org", name: "David", excludeReceivers: ["p-elena"], excludeCoGivers: [] },
+      { id: "p-elena", email: "elena@example.org", name: "Elena", excludeReceivers: ["p-david"], excludeCoGivers: [] },
+      { id: "p-felix", email: "felix@example.org", name: "Felix", excludeReceivers: ["p-greta"], excludeCoGivers: [] },
+      { id: "p-greta", email: "greta@example.org", name: "Greta", excludeReceivers: ["p-felix"], excludeCoGivers: [] },
+      { id: "p-hugo", email: "hugo@example.org", name: "Hugo", excludeReceivers: [], excludeCoGivers: [] },
+      { id: "p-iris", email: "iris@example.org", name: "Iris", excludeReceivers: [], excludeCoGivers: [] }
     ]
   },
   {
@@ -36,11 +33,11 @@ export const SEED_PRESETS = [
     name: "Klassisches Wichteln (1:1)",
     rules: { ...DEFAULT_RULES, giverGroupSize: 1 },
     participants: [
-      { id: "cw-1", email: "alice@example.org", name: "Alice", excludes: ["cw-2"] },
-      { id: "cw-2", email: "bob@example.org", name: "Bob", excludes: ["cw-1"] },
-      { id: "cw-3", email: "carol@example.org", name: "Carol", excludes: [] },
-      { id: "cw-4", email: "dave@example.org", name: "Dave", excludes: [] },
-      { id: "cw-5", email: "eve@example.org", name: "Eve", excludes: [] }
+      { id: "cw-1", email: "alice@example.org", name: "Alice", excludeReceivers: ["cw-2"], excludeCoGivers: [] },
+      { id: "cw-2", email: "bob@example.org", name: "Bob", excludeReceivers: ["cw-1"], excludeCoGivers: [] },
+      { id: "cw-3", email: "carol@example.org", name: "Carol", excludeReceivers: [], excludeCoGivers: [] },
+      { id: "cw-4", email: "dave@example.org", name: "Dave", excludeReceivers: [], excludeCoGivers: [] },
+      { id: "cw-5", email: "eve@example.org", name: "Eve", excludeReceivers: [], excludeCoGivers: [] }
     ]
   }
 ];
@@ -51,12 +48,16 @@ export function normalizePreset(preset) {
     if (!p.id) {
       p.id = `p-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
     }
-    if (!Array.isArray(p.excludes)) {
-      p.excludes = [];
+    if (!Array.isArray(p.excludeReceivers)) {
+      p.excludeReceivers = Array.isArray(p.excludes) ? [...p.excludes] : [];
     }
+    if (!Array.isArray(p.excludeCoGivers)) {
+      p.excludeCoGivers = [];
+    }
+    delete p.excludes;
   });
 
-  // Migrate any legacy symmetric `groups` tags into `excludes` references
+  // Migrate any legacy symmetric `groups` tags into `excludeReceivers`
   for (let i = 0; i < participants.length; i++) {
     const pi = participants[i];
     if (Array.isArray(pi.groups) && pi.groups.length > 0) {
@@ -64,8 +65,8 @@ export function normalizePreset(preset) {
         if (i === j) continue;
         const pj = participants[j];
         if (Array.isArray(pj.groups) && pi.groups.some((g) => pj.groups.includes(g))) {
-          if (!pi.excludes.includes(pj.id)) pi.excludes.push(pj.id);
-          if (!pj.excludes.includes(pi.id)) pj.excludes.push(pi.id);
+          if (!pi.excludeReceivers.includes(pj.id)) pi.excludeReceivers.push(pj.id);
+          if (!pj.excludeReceivers.includes(pi.id)) pj.excludeReceivers.push(pi.id);
         }
       }
     }
@@ -78,10 +79,12 @@ export function normalizePreset(preset) {
 function openDb() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_PRESETS)) {
         db.createObjectStore(STORE_PRESETS, { keyPath: "id" });
+      } else if (event.oldVersion < 3) {
+        req.transaction.objectStore(STORE_PRESETS).clear();
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -102,7 +105,6 @@ export async function loadAllPresets() {
     return existing.map(normalizePreset);
   }
 
-  // Seed initial presets on first visit
   const tx = db.transaction(STORE_PRESETS, "readwrite");
   const store = tx.objectStore(STORE_PRESETS);
   for (const preset of SEED_PRESETS) {

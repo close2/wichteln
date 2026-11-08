@@ -218,9 +218,9 @@ class ServerApp_:
     rules := solver.Rules
         --giver-group-size=(k as int)
         --prevent-same-group-giver-receiver=((rules-map.get "preventSameGroupGiverReceiver") != false)
-        --prevent-same-group-co-givers=((rules-map.get "preventSameGroupCoGivers") != false)
+        --prevent-same-group-co-givers=((rules-map.get "preventSameGroupCoGivers") == true)
         --prevent-duplicate-co-giver-pairs=((rules-map.get "preventDuplicateCoGiverPairs") != false)
-        --prevent-direct-reciprocity=((rules-map.get "preventDirectReciprocity") != false)
+        --prevent-direct-reciprocity=((rules-map.get "preventDirectReciprocity") == true)
         --sample-count=(sample-count as int)
 
     raw-participants := req.get "participants"
@@ -240,7 +240,11 @@ class ServerApp_:
         name := (m.get "name") or ""
         raw-groups := (m.get "groups") or []
         raw-excludes := (m.get "excludes") or []
-        if id is not string or email is not string or name is not string or raw-groups is not List or raw-excludes is not List:
+        raw-exclude-receivers := (m.get "excludeReceivers") or []
+        raw-exclude-co-givers := (m.get "excludeCoGivers") or []
+        if id is not string or email is not string or name is not string or
+            raw-groups is not List or raw-excludes is not List or
+            raw-exclude-receivers is not List or raw-exclude-co-givers is not List:
           bad-type = true
         else:
           groups := []
@@ -257,6 +261,20 @@ class ServerApp_:
               if not trimmed.is-empty: excludes.add trimmed
             else:
               bad-type = true
+          exclude-receivers := []
+          (raw-exclude-receivers as List).do: | ex |
+            if ex is string:
+              trimmed := (ex as string).trim
+              if not trimmed.is-empty: exclude-receivers.add trimmed
+            else:
+              bad-type = true
+          exclude-co-givers := []
+          (raw-exclude-co-givers as List).do: | ex |
+            if ex is string:
+              trimmed := (ex as string).trim
+              if not trimmed.is-empty: exclude-co-givers.add trimmed
+            else:
+              bad-type = true
           participants.add
               solver.Participant
                   --id=(id as string).trim
@@ -264,6 +282,8 @@ class ServerApp_:
                   --name=(name as string).trim
                   --groups=groups
                   --excludes=excludes
+                  --exclude-receivers=exclude-receivers
+                  --exclude-co-givers=exclude-co-givers
 
     if bad-type:
       send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid participant field types"
@@ -280,7 +300,11 @@ class ServerApp_:
       distinct := solver.solve-distinct participants rules
       solutions := distinct["solutions"] as List
       if solutions.is-empty:
-        send-json-error_ socket 422 "ERR_UNSATISFIABLE" "Constraints cannot be satisfied for this participant group"
+        blocking := solver.diagnose-unsatisfiable participants rules
+        detail := blocking.is-empty
+            ? "Constraints cannot be satisfied for this participant group"
+            : "Try disabling: $(blocking.join ", ")"
+        send-json-error_ socket 422 "ERR_UNSATISFIABLE" detail
         return
 
       samples := solutions.map: | assigned/List |

@@ -10,10 +10,19 @@ class Participant:
   id/string
   email/string
   name/string
-  groups/List    // List of string (symmetric exclusion groups)
-  excludes/List  // List of string (directed exclusions: participant ids, emails, names, or labels)
+  groups/List             // List of string (legacy symmetric exclusion groups)
+  excludes/List           // List of string (legacy exclusions)
+  exclude-receivers/List  // List of string (people this participant must NOT gift)
+  exclude-co-givers/List  // List of string (people this participant must NOT team up with as co-givers)
 
-  constructor --.id/string="" --.email/string --.name/string --.groups/List=[] --.excludes/List=[]:
+  constructor
+      --.id/string=""
+      --.email/string
+      --.name/string
+      --.groups/List=[]
+      --.excludes/List=[]
+      --.exclude-receivers/List=[]
+      --.exclude-co-givers/List=[]:
 
   label -> string:
     if name.is-empty: return email
@@ -45,9 +54,9 @@ class Rules:
   constructor
       --.giver-group-size/int=2
       --.prevent-same-group-giver-receiver/bool=true
-      --.prevent-same-group-co-givers/bool=true
+      --.prevent-same-group-co-givers/bool=false
       --.prevent-duplicate-co-giver-pairs/bool=true
-      --.prevent-direct-reciprocity/bool=true
+      --.prevent-direct-reciprocity/bool=false
       --.sample-count/int=3
       --.max-steps/int=40000:
 
@@ -148,14 +157,17 @@ validate-request-data
       return ValidationError "ERR_DUPLICATE_PARTICIPANT" "Duplicate participant identifier: $p.label"
     seen-labels.add label-lower
 
-    if p.groups.size > MAX-GROUPS-PER-PARTICIPANT or p.excludes.size >= n:
+    if p.groups.size > MAX-GROUPS-PER-PARTICIPANT or
+        p.excludes.size >= n or
+        p.exclude-receivers.size >= n or
+        p.exclude-co-givers.size >= n:
       return ValidationError "ERR_INVALID_RULES" "Too many exclusions for $p.label"
 
     p.groups.do: | g/string |
       if not is-valid-group-name g:
         return ValidationError "ERR_INVALID_NAME" "Invalid exclusion group name: $g"
 
-    p.excludes.do: | ex/string |
+    (p.excludes + p.exclude-receivers + p.exclude-co-givers).do: | ex/string |
       if ex.is-empty or ex.size > MAX-EMAIL-LENGTH:
         return ValidationError "ERR_INVALID_RULES" "Invalid exclusion reference for $p.label"
 
@@ -176,8 +188,8 @@ class SolverState_:
   k/int
   rules/Rules
   receiver-order/List          // List of participant indices ordered most-constrained first
-  excluded/ByteArray           // n * n directed matrix (1 if i excludes j via group or one-way exclusion)
-  can-gift/ByteArray           // n * n matrix (1 if giver g can gift receiver r)
+  forbidden-co-giver/ByteArray // n * n symmetric matrix (1 if i and j cannot be co-givers together)
+  can-gift/ByteArray           // n * n directed matrix (1 if giver g can gift receiver r)
   give-count/List              // int per participant
   gives-to/ByteArray           // n * n matrix (1 if g currently gifts r)
   co-giver-pair/ByteArray      // n * n matrix (1 if g1 and g2 currently co-gift together)
@@ -189,7 +201,7 @@ class SolverState_:
   constructor participants/List .rules --.forbidden-signatures/Set={}:
     n = participants.size
     k = rules.giver-group-size
-    excluded = ByteArray (n * n)
+    forbidden-co-giver = ByteArray (n * n)
     can-gift = ByteArray (n * n)
     gives-to = ByteArray (n * n)
     co-giver-pair = ByteArray (n * n)
@@ -200,21 +212,41 @@ class SolverState_:
       pi := participants[i] as Participant
       gi := pi.groups
       exi := pi.excludes
+      ex-rec-i := pi.exclude-receivers
+      ex-cog-i := pi.exclude-co-givers
       for j := 0; j < n; j++:
         if i == j: continue
         pj := participants[j] as Participant
         gj := pj.groups
-        is-excluded := false
+
+        shared-legacy := false
         gi.do: | tag/string |
-          if gj.contains tag: is-excluded = true
-        if not is-excluded:
+          if gj.contains tag: shared-legacy = true
+        if not shared-legacy:
           exi.do: | ref/string |
-            if pj.matches-ref ref: is-excluded = true
-        if is-excluded:
-          excluded[i * n + j] = 1
-        allowed := not (rules.prevent-same-group-giver-receiver and is-excluded)
-        if allowed:
+            if pj.matches-ref ref: shared-legacy = true
+
+        // 1. Giver -> Receiver exclusion check
+        rec-excluded := false
+        if rules.prevent-same-group-giver-receiver and shared-legacy:
+          rec-excluded = true
+        if not rec-excluded:
+          ex-rec-i.do: | ref/string |
+            if pj.matches-ref ref: rec-excluded = true
+
+        if not rec-excluded:
           can-gift[i * n + j] = 1
+
+        // 2. Co-Giver exclusion check (symmetric between i and j)
+        cog-excluded := false
+        if rules.prevent-same-group-co-givers and shared-legacy:
+          cog-excluded = true
+        if not cog-excluded:
+          ex-cog-i.do: | ref/string |
+            if pj.matches-ref ref: cog-excluded = true
+        if cog-excluded:
+          forbidden-co-giver[i * n + j] = 1
+          forbidden-co-giver[j * n + i] = 1
 
     // Order receivers by ascending number of eligible givers (most constrained first),
     // with random tie-breaking.
@@ -301,8 +333,7 @@ class SolverState_:
       // Check co-giver compatibility with already-selected team members.
       compatible := true
       team.do: | prev-g/int |
-        if rules.prevent-same-group-co-givers and
-            (excluded[g * n + prev-g] == 1 or excluded[prev-g * n + g] == 1):
+        if forbidden-co-giver[g * n + prev-g] == 1:
           compatible = false
         if rules.prevent-duplicate-co-giver-pairs and co-giver-pair[g * n + prev-g] == 1:
           compatible = false
@@ -432,6 +463,63 @@ solve-distinct participants/List rules/Rules -> Map:
     "onlyOneSolutionExists": only-one,
     "forcedReceivers": forced-receivers,
   }
+
+/**
+If a configuration is unsatisfiable, checks whether relaxing any optional rules
+  (preventDirectReciprocity, preventSameGroupCoGivers, preventDuplicateCoGiverPairs)
+  makes it solvable, returning the list of conflicting rule keys.
+*/
+diagnose-unsatisfiable participants/List rules/Rules -> List:
+  relaxed := Rules
+      --giver-group-size=rules.giver-group-size
+      --prevent-same-group-giver-receiver=rules.prevent-same-group-giver-receiver
+      --prevent-same-group-co-givers=false
+      --prevent-duplicate-co-giver-pairs=false
+      --prevent-direct-reciprocity=false
+      --max-steps=10000
+  if not (solve participants relaxed):
+    return []
+
+  blocking := []
+  if rules.prevent-direct-reciprocity:
+    test-r := Rules
+        --giver-group-size=rules.giver-group-size
+        --prevent-same-group-giver-receiver=rules.prevent-same-group-giver-receiver
+        --prevent-same-group-co-givers=false
+        --prevent-duplicate-co-giver-pairs=false
+        --prevent-direct-reciprocity=true
+        --max-steps=10000
+    if not (solve participants test-r):
+      blocking.add "preventDirectReciprocity"
+
+  if rules.prevent-same-group-co-givers:
+    test-r := Rules
+        --giver-group-size=rules.giver-group-size
+        --prevent-same-group-giver-receiver=rules.prevent-same-group-giver-receiver
+        --prevent-same-group-co-givers=true
+        --prevent-duplicate-co-giver-pairs=false
+        --prevent-direct-reciprocity=false
+        --max-steps=10000
+    if not (solve participants test-r):
+      blocking.add "preventSameGroupCoGivers"
+
+  if rules.prevent-duplicate-co-giver-pairs:
+    test-r := Rules
+        --giver-group-size=rules.giver-group-size
+        --prevent-same-group-giver-receiver=rules.prevent-same-group-giver-receiver
+        --prevent-same-group-co-givers=false
+        --prevent-duplicate-co-giver-pairs=true
+        --prevent-direct-reciprocity=false
+        --max-steps=10000
+    if not (solve participants test-r):
+      blocking.add "preventDuplicateCoGiverPairs"
+
+  if blocking.is-empty:
+    if rules.prevent-direct-reciprocity: blocking.add "preventDirectReciprocity"
+    if rules.prevent-same-group-co-givers: blocking.add "preventSameGroupCoGivers"
+    if rules.prevent-duplicate-co-giver-pairs: blocking.add "preventDuplicateCoGiverPairs"
+
+  return blocking
 
 replace-all_ template/string placeholder/string value/string -> string:
   return template.replace --all placeholder value
