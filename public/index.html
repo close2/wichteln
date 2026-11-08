@@ -17,7 +17,7 @@
     </div>
     <div class="header-controls">
       <label class="lang-switch">
-        <span data-i18n="uiLanguageLabel">UI / Mail</span>
+        <span data-i18n="uiLanguageLabel">Sprache / Mail-Text:</span>
         <select id="langSelect" aria-label="Language"></select>
       </label>
     </div>
@@ -29,9 +29,9 @@
       <!-- Presets Card -->
       <article class="card">
         <div class="card-header">
-          <h2 data-i18n="presetsTitle">Gruppen / Presets</h2>
+          <h2 data-i18n="presetsTitle">Gespeicherte Runden (Presets)</h2>
           <div class="btn-row">
-            <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neu</button>
+            <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neue Runde</button>
             <button type="button" id="duplicatePresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnDuplicate">Duplizieren</button>
             <button type="button" id="exportJsonBtn" class="btn btn-secondary btn-sm" data-i18n="btnExport">Export JSON</button>
             <label class="btn btn-secondary btn-sm file-btn">
@@ -43,11 +43,11 @@
         </div>
         <div class="preset-bar">
           <label class="field">
-            <span class="field-label" data-i18n="selectPresetLabel">Aktive Gruppe</span>
+            <span class="field-label" data-i18n="selectPresetLabel">Aktive Runde</span>
             <select id="presetSelect"></select>
           </label>
           <label class="field">
-            <span class="field-label" data-i18n="presetNameLabel">Gruppenname</span>
+            <span class="field-label" data-i18n="presetNameLabel">Name der Runde</span>
             <input type="text" id="presetNameInput" maxlength="60">
           </label>
         </div>
@@ -61,19 +61,33 @@
               <span data-i18n="participantsTitle">Teilnehmer</span>
               <span id="participantCountBadge" class="badge">0</span>
             </h2>
-            <p class="card-hint" data-i18n="participantsHint">E-Mail-Adresse genügt. Name und Ausschlussgruppen (z.B. Paare) sind optional.</p>
+            <p class="card-hint" data-i18n="participantsHint">E-Mail-Adresse genügt (Name ist optional und dient nur der Anzeige in der Mail).</p>
           </div>
           <div class="btn-row">
-            <button type="button" id="toggleBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnBulkAdd">Schnelleingabe (Liste)</button>
-            <button type="button" id="addParticipantBtn" class="btn btn-primary btn-sm" data-i18n="btnAddParticipant">+ Teilnehmer</button>
+            <button type="button" id="loadExampleBtn" class="btn btn-secondary btn-sm" data-i18n="btnLoadExample">Beispieldaten</button>
+            <button type="button" id="clearParticipantsBtn" class="btn btn-danger btn-sm" data-i18n="btnClearAll">Alle leeren</button>
+            <button type="button" id="toggleBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnBulkAdd">Liste einfügen</button>
+            <button type="button" id="addParticipantBtn" class="btn btn-primary btn-sm" data-i18n="btnAddParticipant">+ Zeile</button>
+          </div>
+        </div>
+
+        <!-- Explanation Box for the 2 Group Columns -->
+        <div class="info-explainer">
+          <div class="info-item">
+            <strong data-i18n="explainReceiverGroupTitle">🚫 Beschenken sich nicht (Gruppenname):</strong>
+            <span data-i18n="explainReceiverGroupText">Trage denselben Gruppennamen (z.B. „Paar1“) bei zwei oder mehr Personen ein, damit sie sich nicht gegenseitig beschenken (sie dürfen aber trotzdem gemeinsam für jemand anderen ein Geschenk organisieren).</span>
+          </div>
+          <div class="info-item">
+            <strong data-i18n="explainCoGiverGroupTitle">🤝 Kein Schenk-Team (Gruppenname):</strong>
+            <span data-i18n="explainCoGiverGroupText">Trage denselben Gruppennamen (z.B. „TeamX“) bei Personen ein, die bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden sollen. Mehrere Gruppennamen einfach mit Komma trennen.</span>
           </div>
         </div>
 
         <!-- Optional Bulk Add Drawer -->
         <div id="bulkAddDrawer" class="bulk-drawer" hidden>
           <label class="field">
-            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name, Gruppe1|Gruppe2)</span>
-            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, ben@example.org&#10;clara@example.org, Clara, Paar1"></textarea>
+            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name, NichtBeschenkenGruppe, KeinTeamGruppe)</span>
+            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, Anna, Paar1&#10;ben@example.org, Ben, Paar1"></textarea>
           </label>
           <div class="btn-row">
             <button type="button" id="applyBulkBtn" class="btn btn-primary btn-sm" data-i18n="btnApplyBulk">Hinzufügen</button>
@@ -81,22 +95,25 @@
           </div>
         </div>
 
-        <div class="sync-bar">
-          <label class="sync-toggle">
-            <input type="checkbox" id="twoWaySyncCheckbox" checked>
-            <span data-i18n="twoWaySyncLabel">Ausschlüsse standardmäßig beidseitig synchronisieren (↔ Paare)</span>
-          </label>
-          <small class="field-help" data-i18n="twoWaySyncHint">Tipp: Klicke auf ↔ / → in einem Tag, um zwischen beidseitig und einseitig zu wechseln.</small>
-        </div>
-
         <div class="table-wrap">
           <table class="participants-table">
             <thead>
               <tr>
-                <th data-i18n="colEmail">E-Mail-Adresse *</th>
-                <th data-i18n="colName">Name (optional)</th>
-                <th data-i18n="colExcludeReceivers">Schenkt nicht an (Empfänger)</th>
-                <th data-i18n="colExcludeCoGivers">Kein Team mit (Co-Schenker)</th>
+                <th>
+                  <span data-i18n="colEmail">E-Mail-Adresse *</span>
+                </th>
+                <th>
+                  <span data-i18n="colName">Name (optional)</span>
+                  <span class="tooltip-icon" data-i18n-title="tooltipColName" title="Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.">ⓘ</span>
+                </th>
+                <th>
+                  <span data-i18n="colReceiverGroups">Beschenken sich nicht</span>
+                  <span class="tooltip-icon" data-i18n-title="tooltipColReceiverGroups" title="Gleicher Gruppenname (z.B. Paar1) = diese Personen beschenken sich nicht gegenseitig. Mehrere Gruppen mit Komma trennen.">ⓘ</span>
+                </th>
+                <th>
+                  <span data-i18n="colCoGiverGroups">Kein Schenk-Team</span>
+                  <span class="tooltip-icon" data-i18n-title="tooltipColCoGiverGroups" title="Gleicher Gruppenname (z.B. WG1) = diese Personen bilden bei k ≥ 2 kein gemeinsames Schenk-Team. Mehrere Gruppen mit Komma trennen.">ⓘ</span>
+                </th>
                 <th class="col-actions" aria-label="Actions"></th>
               </tr>
             </thead>
@@ -108,19 +125,25 @@
       <!-- Solver Rules Card -->
       <article class="card">
         <div class="card-header">
-          <h2 data-i18n="rulesTitle">Regeln &amp; Constraints</h2>
+          <h2 data-i18n="rulesTitle">Regeln &amp; Optionen</h2>
         </div>
         <div class="rules-grid">
           <label class="field">
-            <span class="field-label" data-i18n="ruleGiverGroupSize">Schenkende pro Geschenk (k)</span>
+            <span class="field-label">
+              <span data-i18n="ruleGiverGroupSize">Schenkende pro Geschenk (k)</span>
+              <span class="tooltip-icon" data-i18n-title="tooltipGiverGroupSize" title="Wie viele Personen legen für ein Geschenk zusammen? Gleichzeitig beteiligt sich jede Person an k Geschenken.">ⓘ</span>
+            </span>
             <input type="number" id="giverGroupSizeInput" min="1" max="5" value="2">
-            <small class="field-help" data-i18n="ruleGiverGroupSizeHelp">k=1: Klassisches Wichteln (1:1) · k=2: Engerl-Bengerl zu zweit</small>
+            <small class="field-help" data-i18n="ruleGiverGroupSizeHelp">k=1: Klassisches Wichteln (1:1) · k=2: Engerl-Bengerl zu zweit (jeder schenkt 2× im Team und bekommt 1 Geschenk)</small>
           </label>
 
           <label class="field">
-            <span class="field-label" data-i18n="ruleSampleCount">Anzahl Dry-Run-Beispiele</span>
+            <span class="field-label">
+              <span data-i18n="ruleSampleCount">Anzahl Dry-Run-Beispiele</span>
+              <span class="tooltip-icon" data-i18n-title="tooltipSampleCount" title="Berechnet mehrere unterschiedliche gültige Ziehungen zur Vorschau.">ⓘ</span>
+            </span>
             <input type="number" id="sampleCountInput" min="1" max="10" value="3">
-            <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele zufällige Ziehungen beim Dry-Run angezeigt werden</small>
+            <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele verschiedene zufällige Ziehungen beim Dry-Run angezeigt werden</small>
           </label>
         </div>
 
@@ -128,16 +151,16 @@
           <label class="checkbox-row">
             <input type="checkbox" id="ruleDuplicateCoGivers" checked>
             <div>
-              <strong data-i18n="ruleDuplicateCoTitle">Keine doppelten Schenk-Teams (k ≥ 2)</strong>
-              <p data-i18n="ruleDuplicateCoDesc">Dasselbe Team {A, B} schenkt nicht gemeinsam an zwei verschiedene Empfänger.</p>
+              <strong data-i18n="ruleDuplicateCoTitle">Keine doppelten Schenk-Teams (bei k ≥ 2 empfohlen)</strong>
+              <p data-i18n="ruleDuplicateCoDesc">Verhindert, dass exakt dieselben zwei Personen {A, B} gleich zweimal zusammen für verschiedene Empfänger schenken müssen.</p>
             </div>
           </label>
 
           <label class="checkbox-row">
             <input type="checkbox" id="ruleDirectReciprocity">
             <div>
-              <strong data-i18n="ruleReciprocityTitle">Keine direkte Gegenseitigkeit (A ↔ B)</strong>
-              <p data-i18n="ruleReciprocityDesc">Wenn A an B schenkt, darf B nicht gleichzeitig an A schenken.</p>
+              <strong data-i18n="ruleReciprocityTitle">Keine direkte Gegenseitigkeit (A ↔ B, für k = 1)</strong>
+              <p data-i18n="ruleReciprocityDesc">Wenn Person A an Person B schenkt, darf B nicht gleichzeitig an A schenken (vor allem beim klassischen 1:1-Wichteln sinnvoll).</p>
             </div>
           </label>
         </div>

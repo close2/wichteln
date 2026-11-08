@@ -11,15 +11,19 @@ class Participant:
   email/string
   name/string
   groups/List             // List of string (legacy symmetric exclusion groups)
+  receiver-groups/List    // List of string (shared group tag => do not gift each other)
+  co-giver-groups/List    // List of string (shared group tag => do not form a giver team together)
   excludes/List           // List of string (legacy exclusions)
-  exclude-receivers/List  // List of string (people this participant must NOT gift)
-  exclude-co-givers/List  // List of string (people this participant must NOT team up with as co-givers)
+  exclude-receivers/List  // List of string
+  exclude-co-givers/List  // List of string
 
   constructor
       --.id/string=""
       --.email/string
       --.name/string
       --.groups/List=[]
+      --.receiver-groups/List=[]
+      --.co-giver-groups/List=[]
       --.excludes/List=[]
       --.exclude-receivers/List=[]
       --.exclude-co-givers/List=[]:
@@ -158,12 +162,14 @@ validate-request-data
     seen-labels.add label-lower
 
     if p.groups.size > MAX-GROUPS-PER-PARTICIPANT or
+        p.receiver-groups.size > MAX-GROUPS-PER-PARTICIPANT or
+        p.co-giver-groups.size > MAX-GROUPS-PER-PARTICIPANT or
         p.excludes.size >= n or
         p.exclude-receivers.size >= n or
         p.exclude-co-givers.size >= n:
       return ValidationError "ERR_INVALID_RULES" "Too many exclusions for $p.label"
 
-    p.groups.do: | g/string |
+    (p.groups + p.receiver-groups + p.co-giver-groups).do: | g/string |
       if not is-valid-group-name g:
         return ValidationError "ERR_INVALID_NAME" "Invalid exclusion group name: $g"
 
@@ -211,6 +217,8 @@ class SolverState_:
     for i := 0; i < n; i++:
       pi := participants[i] as Participant
       gi := pi.groups
+      rgi := pi.receiver-groups
+      cgi := pi.co-giver-groups
       exi := pi.excludes
       ex-rec-i := pi.exclude-receivers
       ex-cog-i := pi.exclude-co-givers
@@ -218,6 +226,8 @@ class SolverState_:
         if i == j: continue
         pj := participants[j] as Participant
         gj := pj.groups
+        rgj := pj.receiver-groups
+        cgj := pj.co-giver-groups
 
         shared-legacy := false
         gi.do: | tag/string |
@@ -231,6 +241,9 @@ class SolverState_:
         if rules.prevent-same-group-giver-receiver and shared-legacy:
           rec-excluded = true
         if not rec-excluded:
+          rgi.do: | tag/string |
+            if rgj.contains tag: rec-excluded = true
+        if not rec-excluded:
           ex-rec-i.do: | ref/string |
             if pj.matches-ref ref: rec-excluded = true
 
@@ -241,6 +254,9 @@ class SolverState_:
         cog-excluded := false
         if rules.prevent-same-group-co-givers and shared-legacy:
           cog-excluded = true
+        if not cog-excluded:
+          cgi.do: | tag/string |
+            if cgj.contains tag: cog-excluded = true
         if not cog-excluded:
           ex-cog-i.do: | ref/string |
             if pj.matches-ref ref: cog-excluded = true

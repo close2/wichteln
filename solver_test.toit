@@ -33,15 +33,15 @@ test-k1-classic:
   give-counts.do: expect-equals 1 it
 
 test-5-participants-k2-with-couple:
-  // 5 participants (Alice, Bob, Carol, Dave, Eve) where Alice <-> Bob exclude each other as receivers
-  // (exclude-receivers), but ARE allowed to be co-givers together, while Carol <-> Dave exclude each other
-  // as co-givers (exclude-co-givers), with k=2!
+  // 5 participants (Alice, Bob, Carol, Dave, Eve) where Alice & Bob share receiver-group "Paar1"
+  // (don't gift each other, but can be co-givers), while Carol & Dave share co-giver-group "WG1"
+  // (cannot be co-givers together, but can gift each other), with k=2!
   participants := [
-    solver.Participant --id="cw-1" --email="alice@example.org" --name="Alice" --exclude-receivers=["cw-2"],
-    solver.Participant --id="cw-2" --email="bob@example.org" --name="Bob" --exclude-receivers=["cw-1"],
-    solver.Participant --id="cw-3" --email="carol@example.org" --name="Carol" --exclude-co-givers=["cw-4"],
-    solver.Participant --id="cw-4" --email="dave@example.org" --name="Dave" --exclude-co-givers=["cw-3"],
-    solver.Participant --id="cw-5" --email="eve@example.org" --name="Eve",
+    solver.Participant --email="alice@example.org" --name="Alice" --receiver-groups=["Paar1"],
+    solver.Participant --email="bob@example.org" --name="Bob" --receiver-groups=["Paar1"],
+    solver.Participant --email="carol@example.org" --name="Carol" --co-giver-groups=["WG1"],
+    solver.Participant --email="dave@example.org" --name="Dave" --co-giver-groups=["WG1"],
+    solver.Participant --email="eve@example.org" --name="Eve",
   ]
   rules := solver.Rules --giver-group-size=2 --sample-count=3
   distinct := solver.solve-distinct participants rules

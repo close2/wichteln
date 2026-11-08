@@ -239,48 +239,41 @@ class ServerApp_:
         email := (m.get "email") or ""
         name := (m.get "name") or ""
         raw-groups := (m.get "groups") or []
+        raw-receiver-groups := (m.get "receiverGroups") or []
+        raw-co-giver-groups := (m.get "coGiverGroups") or []
         raw-excludes := (m.get "excludes") or []
         raw-exclude-receivers := (m.get "excludeReceivers") or []
         raw-exclude-co-givers := (m.get "excludeCoGivers") or []
         if id is not string or email is not string or name is not string or
-            raw-groups is not List or raw-excludes is not List or
-            raw-exclude-receivers is not List or raw-exclude-co-givers is not List:
+            raw-groups is not List or raw-receiver-groups is not List or raw-co-giver-groups is not List or
+            raw-excludes is not List or raw-exclude-receivers is not List or raw-exclude-co-givers is not List:
           bad-type = true
         else:
-          groups := []
-          (raw-groups as List).do: | g |
-            if g is string:
-              trimmed := (g as string).trim
-              if not trimmed.is-empty: groups.add trimmed
-            else:
-              bad-type = true
-          excludes := []
-          (raw-excludes as List).do: | ex |
-            if ex is string:
-              trimmed := (ex as string).trim
-              if not trimmed.is-empty: excludes.add trimmed
-            else:
-              bad-type = true
-          exclude-receivers := []
-          (raw-exclude-receivers as List).do: | ex |
-            if ex is string:
-              trimmed := (ex as string).trim
-              if not trimmed.is-empty: exclude-receivers.add trimmed
-            else:
-              bad-type = true
-          exclude-co-givers := []
-          (raw-exclude-co-givers as List).do: | ex |
-            if ex is string:
-              trimmed := (ex as string).trim
-              if not trimmed.is-empty: exclude-co-givers.add trimmed
-            else:
-              bad-type = true
+          parse-str-list := : | raw-list/List |
+            res := []
+            raw-list.do: | elem |
+              if elem is string:
+                trimmed := (elem as string).trim
+                if not trimmed.is-empty: res.add trimmed
+              else:
+                bad-type = true
+            res
+
+          groups := parse-str-list.call (raw-groups as List)
+          receiver-groups := parse-str-list.call (raw-receiver-groups as List)
+          co-giver-groups := parse-str-list.call (raw-co-giver-groups as List)
+          excludes := parse-str-list.call (raw-excludes as List)
+          exclude-receivers := parse-str-list.call (raw-exclude-receivers as List)
+          exclude-co-givers := parse-str-list.call (raw-exclude-co-givers as List)
+
           participants.add
               solver.Participant
                   --id=(id as string).trim
                   --email=(email as string).trim
                   --name=(name as string).trim
                   --groups=groups
+                  --receiver-groups=receiver-groups
+                  --co-giver-groups=co-giver-groups
                   --excludes=excludes
                   --exclude-receivers=exclude-receivers
                   --exclude-co-givers=exclude-co-givers
