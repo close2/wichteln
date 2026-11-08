@@ -43,6 +43,18 @@ encode-mime-header_ text/string -> string:
   b64 := base64.encode text.to-byte-array
   return "=?UTF-8?B?$b64?="
 
+DAYS_ ::= ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+MONTHS_ ::= ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+pad2_ n/int -> string:
+  return n < 10 ? "0$n" : "$n"
+
+format-rfc5322-date_ -> string:
+  t := Time.now.utc
+  day-name := DAYS_[t.weekday - 1]
+  month-name := MONTHS_[t.month - 1]
+  return "$day-name, $(pad2_ t.day) $month-name $t.year $(pad2_ t.h):$(pad2_ t.m):$(pad2_ t.s) +0000"
+
 wrap-base64_ b64/string -> string:
   lines := []
   pos := 0
@@ -131,7 +143,11 @@ send-emails config/SmtpConfig messages/List -> none:
           ? "<$config.from-email>"
           : "$(encode-mime-header_ config.from-name) <$config.from-email>"
 
+      date-hdr := format-rfc5322-date_
+      msg-seq := 0
       messages.do: | msg/EmailMessage |
+        msg-seq++
+        msg-id := "<$(Time.now.ns-since-epoch).$msg-seq@$config.helo-domain>"
         send-cmd_ active-socket "MAIL FROM:<$config.from-email>" 2
         send-cmd_ active-socket "RCPT TO:<$msg.to-email>" 2
         send-cmd_ active-socket "DATA" 3
@@ -140,6 +156,8 @@ send-emails config/SmtpConfig messages/List -> none:
         encoded-body := wrap-base64_ (base64.encode msg.body.to-byte-array)
 
         payload := [
+          "Date: $date-hdr",
+          "Message-ID: $msg-id",
           "From: $from-header",
           "To: <$msg.to-email>",
           "Subject: $encoded-subject",

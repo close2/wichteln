@@ -1,4 +1,4 @@
-import { I18N, translate, translateError } from "./i18n.js?v=1.2.2";
+import { I18N, translate, translateError } from "./i18n.js?v=1.2.3";
 import {
   SEED_PRESETS,
   loadAllPresets,
@@ -6,7 +6,7 @@ import {
   deletePresetById,
   normalizePreset,
   EXAMPLE_PARTICIPANTS_TEAM
-} from "./db.js?v=1.2.2";
+} from "./db.js?v=1.2.3";
 
 const state = {
   lang: localStorage.getItem("wichteln_lang") || "de",
@@ -177,6 +177,7 @@ function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey,
     if (allowOneWay) {
       const dirBtn = document.createElement("button");
       dirBtn.type = "button";
+      dirBtn.tabIndex = -1;
       dirBtn.className = "exclude-dir-btn";
       dirBtn.textContent = isMutual ? "↔" : "→";
       dirBtn.title = isMutual ? t("dirTwoWayTitle") : t("dirOneWayTitle");
@@ -199,10 +200,13 @@ function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey,
     }
 
     const labelSpan = document.createElement("span");
+    labelSpan.dataset.chipLabelFor = targetP.id;
+    labelSpan.dataset.chipLabelIdx = String(targetEntry.i);
     labelSpan.textContent = participantShortLabel(targetP, targetEntry.i);
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
+    removeBtn.tabIndex = -1;
     removeBtn.className = "exclude-remove-btn";
     removeBtn.textContent = "✕";
     removeBtn.addEventListener("click", async () => {
@@ -225,6 +229,7 @@ function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey,
   if (availableOthers.length > 0) {
     const picker = document.createElement("select");
     picker.className = "exclude-picker";
+    picker.tabIndex = -1;
     const defaultOpt = document.createElement("option");
     defaultOpt.value = "";
     defaultOpt.textContent = t(placeholderKey);
@@ -233,6 +238,8 @@ function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey,
     for (const { other, otherIdx } of availableOthers) {
       const opt = document.createElement("option");
       opt.value = other.id;
+      opt.dataset.optFor = other.id;
+      opt.dataset.optIdx = String(otherIdx);
       opt.textContent = participantLabel(other, otherIdx);
       picker.appendChild(opt);
     }
@@ -261,6 +268,31 @@ function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey,
 
   td.appendChild(wrap);
   return td;
+}
+
+function refreshParticipantLabelsInPlace(participant, idx) {
+  if (!els.participantsTbody) return;
+  const fullLabel = participantLabel(participant, idx);
+  const shortLabel = participantShortLabel(participant, idx);
+  for (const opt of els.participantsTbody.querySelectorAll(`option[data-opt-for="${participant.id}"]`)) {
+    opt.textContent = fullLabel;
+  }
+  for (const span of els.participantsTbody.querySelectorAll(`span[data-chip-label-for="${participant.id}"]`)) {
+    span.textContent = shortLabel;
+  }
+}
+
+function focusParticipantInput(rowIdx, colName) {
+  if (!els.participantsTbody) return false;
+  const target = els.participantsTbody.querySelector(
+    `input[data-row-idx="${rowIdx}"][data-col="${colName}"]`
+  );
+  if (target) {
+    target.focus();
+    target.select?.();
+    return true;
+  }
+  return false;
 }
 
 function renderActivePreset() {
@@ -296,14 +328,24 @@ function renderActivePreset() {
     const tdEmail = document.createElement("td");
     const emailInput = document.createElement("input");
     emailInput.type = "email";
+    emailInput.dataset.rowIdx = String(idx);
+    emailInput.dataset.col = "email";
     emailInput.placeholder = "name@example.org";
     emailInput.value = participant.email || "";
     emailInput.addEventListener("input", () => {
       participant.email = emailInput.value.trim();
+      refreshParticipantLabelsInPlace(participant, idx);
     });
     emailInput.addEventListener("change", async () => {
       participant.email = emailInput.value.trim();
+      refreshParticipantLabelsInPlace(participant, idx);
       await persistActivePreset();
+    });
+    emailInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        focusParticipantInput(idx, "name");
+      }
     });
     tdEmail.appendChild(emailInput);
 
@@ -311,15 +353,53 @@ function renderActivePreset() {
     const tdName = document.createElement("td");
     const nameInput = document.createElement("input");
     nameInput.type = "text";
+    nameInput.dataset.rowIdx = String(idx);
+    nameInput.dataset.col = "name";
     nameInput.placeholder = t("namePlaceholder");
     nameInput.maxLength = 40;
     nameInput.value = participant.name || "";
     nameInput.addEventListener("input", () => {
       participant.name = nameInput.value.trim();
+      refreshParticipantLabelsInPlace(participant, idx);
     });
     nameInput.addEventListener("change", async () => {
       participant.name = nameInput.value.trim();
+      refreshParticipantLabelsInPlace(participant, idx);
       await persistActivePreset();
+    });
+    nameInput.addEventListener("keydown", async (e) => {
+      const isLastRow = idx === preset.participants.length - 1;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (isLastRow) {
+          preset.participants.push({
+            id: makeParticipantId(),
+            email: "",
+            name: "",
+            excludeReceivers: [],
+            excludeCoGivers: []
+          });
+          renderPresetSelect();
+          renderActivePreset();
+          focusParticipantInput(idx + 1, "email");
+          await persistActivePreset();
+        } else {
+          focusParticipantInput(idx + 1, "email");
+        }
+      } else if (e.key === "Tab" && !e.shiftKey && isLastRow && (participant.email || participant.name)) {
+        e.preventDefault();
+        preset.participants.push({
+          id: makeParticipantId(),
+          email: "",
+          name: "",
+          excludeReceivers: [],
+          excludeCoGivers: []
+        });
+        renderPresetSelect();
+        renderActivePreset();
+        focusParticipantInput(idx + 1, "email");
+        await persistActivePreset();
+      }
     });
     tdName.appendChild(nameInput);
 
@@ -348,6 +428,7 @@ function renderActivePreset() {
     tdRemove.className = "col-actions";
     const removeRowBtn = document.createElement("button");
     removeRowBtn.type = "button";
+    removeRowBtn.tabIndex = -1;
     removeRowBtn.className = "btn btn-danger btn-sm";
     removeRowBtn.textContent = "✕";
     removeRowBtn.addEventListener("click", async () => {
