@@ -204,6 +204,7 @@ class ServerApp_:
 
     req := parsed as Map
     dry-run := (req.get "dryRun") != false
+    mode-str := dry-run ? "DRY-RUN" : "LIVE-SEND"
     lang := (req.get "lang")
     if lang is not string or not (templates.contains lang):
       send-json-error_ socket 400 "ERR_INVALID_LANG" "Unsupported language code"
@@ -211,14 +212,17 @@ class ServerApp_:
 
     if not dry-run:
       if not rate-limiter.allow-auth-attempt:
+        print "[$mode-str] Rejected: too many failed auth attempts"
         send-json-error_ socket 429 "ERR_RATE_LIMITED" "Too many failed authentication attempts. Try again later."
         return
       supplied-pass := (req.get "passcode")
       if supplied-pass is not string or passcode.is-empty or not (constant-time-equals_ supplied-pass passcode):
         rate-limiter.record-auth-failure
+        print "[$mode-str] Rejected: invalid passcode"
         send-json-error_ socket 401 "ERR_AUTH_FAILED" "Invalid passcode"
         return
       if not rate-limiter.allow-live-send:
+        print "[$mode-str] Rejected: live-send rate limit exceeded"
         send-json-error_ socket 429 "ERR_RATE_LIMITED" "Rate limit exceeded for sending emails. Try again later."
         return
 
@@ -303,9 +307,11 @@ class ServerApp_:
 
     val-err := solver.validate-request-data participants rules --require-emails=(not dry-run)
     if val-err:
+      print "[$mode-str] Validation failed ($val-err.code): $val-err.detail"
       send-json-error_ socket 400 val-err.code val-err.detail
       return
 
+    print "[$mode-str] Request accepted: participants=$participants.size, k=$rules.giver-group-size, lang=$lang"
     lang-template := templates[lang] as Map
 
     if dry-run:
@@ -316,12 +322,14 @@ class ServerApp_:
         detail := blocking.is-empty
             ? "Constraints cannot be satisfied for this participant group"
             : "Try disabling: $(blocking.join ", ")"
+        print "[$mode-str] Unsatisfiable constraints: $detail"
         send-json-error_ socket 422 "ERR_UNSATISFIABLE" detail
         return
 
       samples := solutions.map: | assigned/List |
         solver.build-draw-result participants assigned lang-template
 
+      print "[$mode-str] Returning $samples.size sample(s) (onlyOne=$(distinct["onlyOneSolutionExists"]), forced=$(distinct["forcedReceivers"].size))"
       resp := json.encode {
         "ok": true,
         "dryRun": true,
@@ -338,6 +346,7 @@ class ServerApp_:
     // Live send mode (dryRun == false)
     assigned := solver.solve participants rules
     if not assigned:
+      print "[$mode-str] Unsatisfiable constraints for participant group"
       send-json-error_ socket 422 "ERR_UNSATISFIABLE" "Constraints cannot be satisfied for this participant group"
       return
 
@@ -352,10 +361,12 @@ class ServerApp_:
     smtp-err := catch:
       smtp.send-emails smtp-config email-messages
     if smtp-err:
+      print "[$mode-str] ERROR: SMTP dispatch failed: $smtp-err"
       send-json-error_ socket 502 "ERR_SMTP_FAILED" "Failed to dispatch emails via SMTP: $smtp-err"
       return
 
     rate-limiter.record-live-send
+    print "[$mode-str] Successfully dispatched $email-messages.size email(s)"
     resp := json.encode {
       "ok": true,
       "dryRun": false,
@@ -373,6 +384,7 @@ class ServerApp_:
     return "Server Error"
 
   send-json-error_ socket/tcp.Socket status/int code/string detail/string -> none:
+    print "[HTTP $status] $code: $detail"
     payload := json.encode {
       "ok": false,
       "errorCode": code,
@@ -409,7 +421,7 @@ main args/List:
   app := ServerApp_ config public-dir
   network := net.open
   server-socket := network.tcp-listen app.port
-  print "Wichteln server listening on http://127.0.0.1:$app.port"
+  print "Wichteln server listening on http://127.0.0.1:$app.port (smtp=$app.smtp-config.host:$app.smtp-config.port tls=$app.smtp-config.tls-mode from=$app.smtp-config.from-email)"
 
   while true:
     client := server-socket.accept

@@ -53,25 +53,30 @@ wrap-base64_ b64/string -> string:
     pos = end
   return lines.join "\r\n"
 
-read-smtp-response_ socket/tcp.Socket -> int:
+read-smtp-response_ socket/tcp.Socket -> List:
   last-code := 0
+  last-line := ""
   while true:
     line := socket.in.read-line
     if not line or line.size < 3:
       throw "SMTP_UNEXPECTED_EOF"
     code := int.parse line[0..3] --if-error=(: throw "SMTP_BAD_STATUS: $line")
     last-code = code
+    last-line = line
     // Multi-line responses have '-' at index 3; final line has ' ' or ends at 3.
     if line.size == 3 or line[3] != '-':
       if code >= 400:
         throw "SMTP_ERROR_$code: $line"
-      return last-code
+      return [last-code, last-line]
 
-send-cmd_ socket/tcp.Socket cmd/string expected-prefix/int -> none:
+send-cmd_ socket/tcp.Socket cmd/string expected-prefix/int -> string:
   socket.out.write "$cmd\r\n" --flush=true
-  code := read-smtp-response_ socket
+  resp := read-smtp-response_ socket
+  code := resp[0] as int
+  line := resp[1] as string
   if (code / 100) != expected-prefix:
-    throw "SMTP_UNEXPECTED_CODE_$code"
+    throw "SMTP_UNEXPECTED_CODE_$code: $line"
+  return line
 
 /**
 Sends a batch of EmailMessage items over a single SMTP session.
@@ -79,6 +84,7 @@ Sends a batch of EmailMessage items over a single SMTP session.
 send-emails config/SmtpConfig messages/List -> none:
   if messages.is-empty: return
 
+  print "[SMTP] Connecting to $config.host:$config.port (tlsMode=$config.tls-mode, from=$config.from-email, messages=$messages.size)"
   network := net.open
   try:
     raw-socket/tcp.Socket := network.tcp-connect config.host config.port
@@ -93,9 +99,10 @@ send-emails config/SmtpConfig messages/List -> none:
         active-socket = tls-sock
 
       // 220 Service ready banner.
-      banner-code := read-smtp-response_ active-socket
+      banner-resp := read-smtp-response_ active-socket
+      banner-code := banner-resp[0] as int
       if (banner-code / 100) != 2:
-        throw "SMTP_BANNER_FAILED_$banner-code"
+        throw "SMTP_BANNER_FAILED_$banner-code: $(banner-resp[1])"
 
       send-cmd_ active-socket "EHLO $config.helo-domain" 2
 
@@ -118,6 +125,7 @@ send-emails config/SmtpConfig messages/List -> none:
         auth-buf.replace (2 + user-bytes.size) pass-bytes
         auth-b64 := base64.encode auth-buf
         send-cmd_ active-socket "AUTH PLAIN $auth-b64" 2
+        print "[SMTP] Authenticated as $config.username"
 
       from-header := config.from-name.is-empty
           ? "<$config.from-email>"
@@ -145,9 +153,12 @@ send-emails config/SmtpConfig messages/List -> none:
         ].join "\r\n"
 
         active-socket.out.write payload --flush=true
-        code := read-smtp-response_ active-socket
+        data-resp := read-smtp-response_ active-socket
+        code := data-resp[0] as int
+        line := data-resp[1] as string
         if (code / 100) != 2:
-          throw "SMTP_DATA_REJECTED_$code"
+          throw "SMTP_DATA_REJECTED_$code: $line"
+        print "[SMTP] Sent email to <$msg.to-email>: $line"
 
       catch:
         send-cmd_ active-socket "QUIT" 2

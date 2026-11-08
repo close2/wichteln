@@ -1,4 +1,4 @@
-import { I18N, translate, translateError } from "./i18n.js?v=1.2.1";
+import { I18N, translate, translateError } from "./i18n.js?v=1.2.2";
 import {
   SEED_PRESETS,
   loadAllPresets,
@@ -6,7 +6,7 @@ import {
   deletePresetById,
   normalizePreset,
   EXAMPLE_PARTICIPANTS_TEAM
-} from "./db.js?v=1.2.1";
+} from "./db.js?v=1.2.2";
 
 const state = {
   lang: localStorage.getItem("wichteln_lang") || "de",
@@ -84,6 +84,9 @@ function showStatus(type, message) {
   els.statusBanner.hidden = false;
   els.statusBanner.className = `status-banner ${type}`;
   els.statusBanner.textContent = message;
+  if (type === "error") {
+    els.statusBanner.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 }
 
 function clearStatus() {
@@ -295,9 +298,11 @@ function renderActivePreset() {
     emailInput.type = "email";
     emailInput.placeholder = "name@example.org";
     emailInput.value = participant.email || "";
+    emailInput.addEventListener("input", () => {
+      participant.email = emailInput.value.trim();
+    });
     emailInput.addEventListener("change", async () => {
       participant.email = emailInput.value.trim();
-      renderActivePreset();
       await persistActivePreset();
     });
     tdEmail.appendChild(emailInput);
@@ -309,9 +314,11 @@ function renderActivePreset() {
     nameInput.placeholder = t("namePlaceholder");
     nameInput.maxLength = 40;
     nameInput.value = participant.name || "";
+    nameInput.addEventListener("input", () => {
+      participant.name = nameInput.value.trim();
+    });
     nameInput.addEventListener("change", async () => {
       participant.name = nameInput.value.trim();
-      renderActivePreset();
       await persistActivePreset();
     });
     tdName.appendChild(nameInput);
