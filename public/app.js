@@ -1,4 +1,4 @@
-import { I18N, translate, translateError } from "./i18n.js?v=1.2.3";
+import { I18N, translate, translateError } from "./i18n.js?v=1.2.4";
 import {
   SEED_PRESETS,
   loadAllPresets,
@@ -6,7 +6,7 @@ import {
   deletePresetById,
   normalizePreset,
   EXAMPLE_PARTICIPANTS_TEAM
-} from "./db.js?v=1.2.3";
+} from "./db.js?v=1.2.4";
 
 const state = {
   lang: localStorage.getItem("wichteln_lang") || "de",

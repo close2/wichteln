@@ -6,6 +6,8 @@ export const I18N = {
     appSubtitle: "Team- & Klassisches Wichteln",
     uiLanguageLabel: "Sprache / Mail-Text:",
     presetsTitle: "Gespeicherte Runden (Presets)",
+    presetsHint:
+      "Werden nur lokal in deinem Browser gespeichert (IndexedDB, nicht am Server). Für Backups oder andere Geräte Export/Import JSON nutzen.",
     btnNewPreset: "+ Neue Runde",
     btnDuplicate: "Duplizieren",
     btnExport: "Export JSON",
@@ -127,6 +129,8 @@ export const I18N = {
     appSubtitle: "Team & Classic Secret Santa",
     uiLanguageLabel: "Language / Mail Text:",
     presetsTitle: "Saved Rounds (Presets)",
+    presetsHint:
+      "Stored locally in your browser only (IndexedDB, never on the server). Use Export/Import JSON for backups or moving to another device.",
     btnNewPreset: "+ New Round",
     btnDuplicate: "Duplicate",
     btnExport: "Export JSON",

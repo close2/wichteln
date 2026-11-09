@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Wichteln / Engerl-Bengerl</title>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=1.2.3">
+  <link rel="stylesheet" href="./styles.css?v=1.2.4">
 </head>
 <body>
   <header class="app-header">
@@ -30,7 +30,10 @@
       <!-- Presets Card -->
       <article class="card">
         <div class="card-header">
-          <h2 data-i18n="presetsTitle">Gespeicherte Runden (Presets)</h2>
+          <div>
+            <h2 data-i18n="presetsTitle">Gespeicherte Runden (Presets)</h2>
+            <p class="card-hint" data-i18n="presetsHint">Werden nur lokal in deinem Browser gespeichert (IndexedDB, nicht am Server). Für Backups oder andere Geräte Export/Import JSON nutzen.</p>
+          </div>
           <div class="btn-row">
             <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neue Runde</button>
             <button type="button" id="duplicatePresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnDuplicate">Duplizieren</button>
@@ -214,6 +217,6 @@
     </section>
   </main>
 
-  <script type="module" src="./app.js?v=1.2.3"></script>
+  <script type="module" src="./app.js?v=1.2.4"></script>
 </body>
 </html>
