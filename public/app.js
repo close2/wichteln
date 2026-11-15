@@ -1,12 +1,27 @@
-import { I18N, translate, translateError } from "./i18n.js?v=1.2.4";
+import { translate, translateError } from "./i18n.js?v=1.3.0";
 import {
-  SEED_PRESETS,
+  createEmptyDraft,
   loadAllPresets,
   savePreset,
   deletePresetById,
   normalizePreset,
+  EXAMPLE_PARTICIPANTS_CLASSIC,
   EXAMPLE_PARTICIPANTS_TEAM
-} from "./db.js?v=1.2.4";
+} from "./db.js?v=1.3.0";
+
+const SESSION_DRAFT_KEY = "wichteln_session_draft_v4";
+
+function loadInitialRound() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_DRAFT_KEY);
+    if (raw) {
+      return normalizePreset(JSON.parse(raw));
+    }
+  } catch {
+    // Fall back to clean empty draft
+  }
+  return createEmptyDraft();
+}
 
 const state = {
   lang: localStorage.getItem("wichteln_lang") || "de",
@@ -14,25 +29,44 @@ const state = {
     { code: "de", label: "Deutsch" },
     { code: "en", label: "English" }
   ],
-  presets: structuredClone(SEED_PRESETS).map(normalizePreset),
-  activePresetId: localStorage.getItem("wichteln_active_preset") || SEED_PRESETS[0].id,
+  savedPresets: [],
+  currentRound: loadInitialRound(),
   twoWaySync: localStorage.getItem("wichteln_twoway_sync") !== "false",
   samples: [],
   dryRunMeta: null,
-  activeSampleIdx: 0
+  activeSampleIdx: 0,
+  lastGeneratedPersonalCode: "",
+  userModified: false
 };
 
 const els = {
   langSelect: document.getElementById("langSelect"),
+  openRedeemBtn: document.getElementById("openRedeemBtn"),
+  redeemSection: document.getElementById("redeemSection"),
+  closeRedeemBtn: document.getElementById("closeRedeemBtn"),
+  redeemForm: document.getElementById("redeemForm"),
+  redeemCodeInput: document.getElementById("redeemCodeInput"),
+  redeemSubmitBtn: document.getElementById("redeemSubmitBtn"),
+  redeemResultBox: document.getElementById("redeemResultBox"),
+
   presetSelect: document.getElementById("presetSelect"),
   presetNameInput: document.getElementById("presetNameInput"),
+  savePresetBtn: document.getElementById("savePresetBtn"),
   newPresetBtn: document.getElementById("newPresetBtn"),
   duplicatePresetBtn: document.getElementById("duplicatePresetBtn"),
   exportJsonBtn: document.getElementById("exportJsonBtn"),
   importJsonInput: document.getElementById("importJsonInput"),
   deletePresetBtn: document.getElementById("deletePresetBtn"),
+
+  modeCard1: document.getElementById("modeCard1"),
+  modeCard2: document.getElementById("modeCard2"),
+  modeCardMore: document.getElementById("modeCardMore"),
+  customTeamSizeBox: document.getElementById("customTeamSizeBox"),
+  giverGroupSizeSelect: document.getElementById("giverGroupSizeSelect"),
+
   participantCountBadge: document.getElementById("participantCountBadge"),
   loadExampleBtn: document.getElementById("loadExampleBtn"),
+  emptyLoadExampleBtn: document.getElementById("emptyLoadExampleBtn"),
   clearParticipantsBtn: document.getElementById("clearParticipantsBtn"),
   toggleBulkBtn: document.getElementById("toggleBulkBtn"),
   bulkAddDrawer: document.getElementById("bulkAddDrawer"),
@@ -40,18 +74,43 @@ const els = {
   applyBulkBtn: document.getElementById("applyBulkBtn"),
   cancelBulkBtn: document.getElementById("cancelBulkBtn"),
   addParticipantBtn: document.getElementById("addParticipantBtn"),
+  emptyAddFirstBtn: document.getElementById("emptyAddFirstBtn"),
+  emptyParticipantsBox: document.getElementById("emptyParticipantsBox"),
+  participantsTableWrap: document.getElementById("participantsTableWrap"),
+  explainReceiverTextEl: document.getElementById("explainReceiverTextEl"),
+  explainCoGiverCard: document.getElementById("explainCoGiverCard"),
+  thExcludeCoGivers: document.getElementById("thExcludeCoGivers"),
   twoWaySyncCheckbox: document.getElementById("twoWaySyncCheckbox"),
   participantsTbody: document.getElementById("participantsTbody"),
-  giverGroupSizeInput: document.getElementById("giverGroupSizeInput"),
-  sampleCountInput: document.getElementById("sampleCountInput"),
+
+  ruleDuplicateCoRow: document.getElementById("ruleDuplicateCoRow"),
   ruleDuplicateCoGivers: document.getElementById("ruleDuplicateCoGivers"),
   ruleDirectReciprocity: document.getElementById("ruleDirectReciprocity"),
-  statusBanner: document.getElementById("statusBanner"),
+  sampleCountInput: document.getElementById("sampleCountInput"),
   runDryRunBtn: document.getElementById("runDryRunBtn"),
   dryRunResults: document.getElementById("dryRunResults"),
+
+  statusBanner: document.getElementById("statusBanner"),
+  enableRecoveryCheckbox: document.getElementById("enableRecoveryCheckbox"),
   liveSendForm: document.getElementById("liveSendForm"),
   passcodeInput: document.getElementById("passcodeInput"),
-  sendRealEmailsBtn: document.getElementById("sendRealEmailsBtn")
+  sendRealEmailsBtn: document.getElementById("sendRealEmailsBtn"),
+
+  seedResultBox: document.getElementById("seedResultBox"),
+  seedDisplayCode: document.getElementById("seedDisplayCode"),
+  copySeedBtn: document.getElementById("copySeedBtn"),
+
+  recoveryDetails: document.getElementById("recoveryDetails"),
+  recoverySeedInput: document.getElementById("recoverySeedInput"),
+  recoveryPersonSelect: document.getElementById("recoveryPersonSelect"),
+  generateCodeBtn: document.getElementById("generateCodeBtn"),
+  generatedCodeBox: document.getElementById("generatedCodeBox"),
+  generatedCodeForLabel: document.getElementById("generatedCodeForLabel"),
+  generatedCodeText: document.getElementById("generatedCodeText"),
+  copyPersonalCodeBtn: document.getElementById("copyPersonalCodeBtn"),
+  copyPersonalLinkBtn: document.getElementById("copyPersonalLinkBtn"),
+  recoveryOverrideEmailInput: document.getElementById("recoveryOverrideEmailInput"),
+  resendSingleEmailBtn: document.getElementById("resendSingleEmailBtn")
 };
 
 function t(key, vars) {
@@ -59,7 +118,11 @@ function t(key, vars) {
 }
 
 function getActivePreset() {
-  return state.presets.find((p) => p.id === state.activePresetId) || state.presets[0];
+  return state.currentRound;
+}
+
+function isTeamMode() {
+  return (state.currentRound.rules.giverGroupSize || 1) >= 2;
 }
 
 function participantLabel(p, fallbackIndex = 0) {
@@ -95,15 +158,42 @@ function clearStatus() {
   els.statusBanner.textContent = "";
 }
 
-function syncSeedPresetDefaultNames() {
-  const friendsNames = [I18N.de.presetFriendsName, I18N.en.presetFriendsName];
-  const classicNames = [I18N.de.presetClassicName, I18N.en.presetClassicName];
-  for (const preset of state.presets) {
-    if (preset.id === "preset-friends-couples" && friendsNames.includes(preset.name)) {
-      preset.name = t("presetFriendsName");
-    } else if (preset.id === "preset-classic-wichteln" && classicNames.includes(preset.name)) {
-      preset.name = t("presetClassicName");
+async function copyTextWithFeedback(btn, text, originalKey) {
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    if (btn) {
+      btn.textContent = t("copiedFeedback");
+      setTimeout(() => {
+        btn.textContent = t(originalKey);
+      }, 1600);
     }
+  } catch {
+    // Fallback selection if clipboard API is unavailable
+  }
+}
+
+function saveSessionDraft() {
+  try {
+    sessionStorage.setItem(SESSION_DRAFT_KEY, JSON.stringify(state.currentRound));
+  } catch {
+    // Ignore sessionStorage quota/restriction errors
+  }
+}
+
+async function persistActivePreset() {
+  state.userModified = true;
+  saveSessionDraft();
+  const round = state.currentRound;
+  if (round.id) {
+    const existingIdx = state.savedPresets.findIndex((p) => p.id === round.id);
+    const snapshot = structuredClone(round);
+    if (existingIdx >= 0) {
+      state.savedPresets[existingIdx] = snapshot;
+    } else {
+      state.savedPresets.push(snapshot);
+    }
+    await savePreset(snapshot);
   }
 }
 
@@ -116,6 +206,13 @@ function applyTranslations() {
       node.textContent = val;
     }
   }
+  for (const node of document.querySelectorAll("[data-i18n-placeholder]")) {
+    const key = node.getAttribute("data-i18n-placeholder");
+    const val = translate(state.lang, key);
+    if (val !== null) {
+      node.placeholder = val;
+    }
+  }
   for (const node of document.querySelectorAll("[data-i18n-title]")) {
     const key = node.getAttribute("data-i18n-title");
     const val = translate(state.lang, key);
@@ -125,7 +222,6 @@ function applyTranslations() {
       node.setAttribute("aria-label", val);
     }
   }
-  syncSeedPresetDefaultNames();
   renderPresetSelect();
   renderActivePreset();
   renderDryRunResults();
@@ -146,20 +242,99 @@ function renderLanguageSelect() {
 function renderPresetSelect() {
   if (!els.presetSelect) return;
   els.presetSelect.replaceChildren();
-  for (const preset of state.presets) {
+
+  const blankOpt = document.createElement("option");
+  blankOpt.value = "";
+  blankOpt.textContent = t("unsavedNewRoundOption");
+  if (!state.currentRound.id) blankOpt.selected = true;
+  els.presetSelect.appendChild(blankOpt);
+
+  for (const preset of state.savedPresets) {
     const opt = document.createElement("option");
     opt.value = preset.id;
-    opt.textContent = `${preset.name} (${preset.participants.length})`;
-    if (preset.id === state.activePresetId) opt.selected = true;
+    const displayName = preset.name || t("newPresetDefaultName");
+    opt.textContent = `${displayName} (${preset.participants.length})`;
+    if (preset.id === state.currentRound.id) opt.selected = true;
     els.presetSelect.appendChild(opt);
   }
+
   if (els.deletePresetBtn) {
-    els.deletePresetBtn.disabled = state.presets.length <= 1;
+    els.deletePresetBtn.disabled = !state.currentRound.id;
   }
 }
 
-function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey, allowOneWay) {
+function renderModeControls() {
+  const size = state.currentRound.rules.giverGroupSize || 1;
+  const team = size >= 2;
+
+  els.modeCard1?.classList.toggle("active", size === 1);
+  els.modeCard2?.classList.toggle("active", size === 2);
+  els.modeCardMore?.classList.toggle("active", size >= 3);
+
+  if (els.customTeamSizeBox) {
+    els.customTeamSizeBox.hidden = size < 3;
+  }
+  if (els.giverGroupSizeSelect && size >= 3) {
+    els.giverGroupSizeSelect.value = String(size);
+  }
+
+  if (els.explainReceiverTextEl) {
+    els.explainReceiverTextEl.textContent = t(team ? "explainReceiverTextTeam" : "explainReceiverTextClassic");
+  }
+  if (els.explainCoGiverCard) {
+    els.explainCoGiverCard.hidden = !team;
+  }
+  if (els.thExcludeCoGivers) {
+    els.thExcludeCoGivers.hidden = !team;
+  }
+  if (els.ruleDuplicateCoRow) {
+    els.ruleDuplicateCoRow.hidden = !team;
+  }
+}
+
+function renderRecoveryControls() {
+  const round = state.currentRound;
+  const seed = round.lastRecoverySeed || "";
+
+  if (els.seedResultBox && els.seedDisplayCode) {
+    els.seedResultBox.hidden = !seed;
+    els.seedDisplayCode.textContent = seed;
+  }
+  if (els.recoverySeedInput && seed && !els.recoverySeedInput.value) {
+    els.recoverySeedInput.value = seed;
+  }
+
+  if (!els.recoveryPersonSelect) return;
+  const prevVal = els.recoveryPersonSelect.value;
+  els.recoveryPersonSelect.replaceChildren();
+
+  if (round.participants.length === 0) {
+    const emptyOpt = document.createElement("option");
+    emptyOpt.value = "";
+    emptyOpt.textContent = t("recoveryNoParticipants");
+    els.recoveryPersonSelect.appendChild(emptyOpt);
+    els.recoveryPersonSelect.disabled = true;
+    if (els.generateCodeBtn) els.generateCodeBtn.disabled = true;
+    if (els.resendSingleEmailBtn) els.resendSingleEmailBtn.disabled = true;
+    return;
+  }
+
+  els.recoveryPersonSelect.disabled = false;
+  if (els.generateCodeBtn) els.generateCodeBtn.disabled = false;
+  if (els.resendSingleEmailBtn) els.resendSingleEmailBtn.disabled = false;
+
+  round.participants.forEach((p, idx) => {
+    const opt = document.createElement("option");
+    opt.value = String(idx);
+    opt.textContent = participantLabel(p, idx);
+    if (String(idx) === prevVal) opt.selected = true;
+    els.recoveryPersonSelect.appendChild(opt);
+  });
+}
+
+function buildExcludesCell(preset, participant, byId, fieldName, placeholderKey, allowOneWay, dataLabelKey) {
   const td = document.createElement("td");
+  td.setAttribute("data-label", t(dataLabelKey));
   const wrap = document.createElement("div");
   wrap.className = "excludes-cell";
 
@@ -280,6 +455,7 @@ function refreshParticipantLabelsInPlace(participant, idx) {
   for (const span of els.participantsTbody.querySelectorAll(`span[data-chip-label-for="${participant.id}"]`)) {
     span.textContent = shortLabel;
   }
+  renderRecoveryControls();
 }
 
 function focusParticipantInput(rowIdx, colName) {
@@ -295,23 +471,50 @@ function focusParticipantInput(rowIdx, colName) {
   return false;
 }
 
+function removeParticipantAt(preset, idx) {
+  const removed = preset.participants[idx];
+  if (!removed) return;
+  const removedId = removed.id;
+  preset.participants.splice(idx, 1);
+  for (const other of preset.participants) {
+    if (Array.isArray(other.excludeReceivers)) {
+      other.excludeReceivers = other.excludeReceivers.filter((id) => id !== removedId);
+    }
+    if (Array.isArray(other.excludeCoGivers)) {
+      other.excludeCoGivers = other.excludeCoGivers.filter((id) => id !== removedId);
+    }
+  }
+}
+
 function renderActivePreset() {
   const preset = getActivePreset();
   if (!preset) return;
 
-  if (els.presetNameInput) els.presetNameInput.value = preset.name;
+  renderModeControls();
+
+  if (els.presetNameInput) els.presetNameInput.value = preset.name || "";
   if (els.participantCountBadge) els.participantCountBadge.textContent = String(preset.participants.length);
   if (els.twoWaySyncCheckbox) els.twoWaySyncCheckbox.checked = state.twoWaySync;
 
-  if (els.giverGroupSizeInput) els.giverGroupSizeInput.value = String(preset.rules.giverGroupSize ?? 2);
   if (els.sampleCountInput) els.sampleCountInput.value = String(preset.rules.sampleCount ?? 3);
   if (els.ruleDuplicateCoGivers) els.ruleDuplicateCoGivers.checked = preset.rules.preventDuplicateCoGiverPairs !== false;
   if (els.ruleDirectReciprocity) els.ruleDirectReciprocity.checked = preset.rules.preventDirectReciprocity === true;
+  if (els.enableRecoveryCheckbox) els.enableRecoveryCheckbox.checked = preset.rules.enableRecovery !== false;
+
+  const isEmpty = preset.participants.length === 0;
+  if (els.emptyParticipantsBox) els.emptyParticipantsBox.hidden = !isEmpty;
+  if (els.participantsTableWrap) els.participantsTableWrap.hidden = isEmpty;
+  if (els.clearParticipantsBtn) els.clearParticipantsBtn.disabled = isEmpty;
+
+  renderRecoveryControls();
 
   if (!els.participantsTbody) return;
+  els.participantsTbody.replaceChildren();
+  if (isEmpty) return;
+
+  const team = isTeamMode();
   const byId = new Map(preset.participants.map((p, i) => [p.id, { p, i }]));
 
-  els.participantsTbody.replaceChildren();
   preset.participants.forEach((participant, idx) => {
     if (!Array.isArray(participant.excludeReceivers)) participant.excludeReceivers = [];
     if (!Array.isArray(participant.excludeCoGivers)) participant.excludeCoGivers = [];
@@ -324,8 +527,32 @@ function renderActivePreset() {
 
     const tr = document.createElement("tr");
 
+    // Mobile card top bar (person number + remove button)
+    const mobileHeader = document.createElement("div");
+    mobileHeader.className = "mobile-row-header";
+    const mobileTitle = document.createElement("span");
+    mobileTitle.className = "mobile-row-title";
+    mobileTitle.textContent = t("mobileCardPersonLabel", { n: idx + 1 });
+    const mobileRemoveBtn = document.createElement("button");
+    mobileRemoveBtn.type = "button";
+    mobileRemoveBtn.tabIndex = -1;
+    mobileRemoveBtn.className = "btn btn-danger btn-sm";
+    mobileRemoveBtn.textContent = `✕ ${t("btnRemoveRowLabel")}`;
+    mobileRemoveBtn.addEventListener("click", async () => {
+      removeParticipantAt(preset, idx);
+      renderPresetSelect();
+      renderActivePreset();
+      await persistActivePreset();
+    });
+    mobileHeader.append(mobileTitle, mobileRemoveBtn);
+
     // Column 1: Email
     const tdEmail = document.createElement("td");
+    tdEmail.appendChild(mobileHeader);
+    const mobileEmailLabel = document.createElement("span");
+    mobileEmailLabel.className = "mobile-field-label";
+    mobileEmailLabel.textContent = t("colEmail");
+    tdEmail.appendChild(mobileEmailLabel);
     const emailInput = document.createElement("input");
     emailInput.type = "email";
     emailInput.dataset.rowIdx = String(idx);
@@ -335,6 +562,7 @@ function renderActivePreset() {
     emailInput.addEventListener("input", () => {
       participant.email = emailInput.value.trim();
       refreshParticipantLabelsInPlace(participant, idx);
+      saveSessionDraft();
     });
     emailInput.addEventListener("change", async () => {
       participant.email = emailInput.value.trim();
@@ -351,6 +579,7 @@ function renderActivePreset() {
 
     // Column 2: Optional Name
     const tdName = document.createElement("td");
+    tdName.setAttribute("data-label", t("colName"));
     const nameInput = document.createElement("input");
     nameInput.type = "text";
     nameInput.dataset.rowIdx = String(idx);
@@ -361,6 +590,7 @@ function renderActivePreset() {
     nameInput.addEventListener("input", () => {
       participant.name = nameInput.value.trim();
       refreshParticipantLabelsInPlace(participant, idx);
+      saveSessionDraft();
     });
     nameInput.addEventListener("change", async () => {
       participant.name = nameInput.value.trim();
@@ -403,27 +633,34 @@ function renderActivePreset() {
     });
     tdName.appendChild(nameInput);
 
-    // Column 3: Direct Picker for Receiver Exclusions ("Schenkt nicht an", two-way ↔ or one-way →)
+    // Column 3: Receiver Exclusions
     const tdExcludeReceivers = buildExcludesCell(
       preset,
       participant,
       byId,
       "excludeReceivers",
       "addExcludeReceiverPlaceholder",
-      true
+      true,
+      "colExcludeReceivers"
     );
 
-    // Column 4: Direct Picker for Co-Giver Exclusions ("Kein Schenk-Team mit", mutual ↔)
-    const tdExcludeCoGivers = buildExcludesCell(
-      preset,
-      participant,
-      byId,
-      "excludeCoGivers",
-      "addExcludeCoGiverPlaceholder",
-      false
-    );
+    tr.append(tdEmail, tdName, tdExcludeReceivers);
 
-    // Column 5: Remove row
+    // Column 4: Co-Giver Exclusions (only in Team mode)
+    if (team) {
+      const tdExcludeCoGivers = buildExcludesCell(
+        preset,
+        participant,
+        byId,
+        "excludeCoGivers",
+        "addExcludeCoGiverPlaceholder",
+        false,
+        "colExcludeCoGivers"
+      );
+      tr.appendChild(tdExcludeCoGivers);
+    }
+
+    // Column 5: Desktop Remove Row Button
     const tdRemove = document.createElement("td");
     tdRemove.className = "col-actions";
     const removeRowBtn = document.createElement("button");
@@ -431,33 +668,18 @@ function renderActivePreset() {
     removeRowBtn.tabIndex = -1;
     removeRowBtn.className = "btn btn-danger btn-sm";
     removeRowBtn.textContent = "✕";
+    removeRowBtn.ariaLabel = t("btnRemoveRowLabel");
     removeRowBtn.addEventListener("click", async () => {
-      const removedId = participant.id;
-      preset.participants.splice(idx, 1);
-      for (const other of preset.participants) {
-        if (Array.isArray(other.excludeReceivers)) {
-          other.excludeReceivers = other.excludeReceivers.filter((id) => id !== removedId);
-        }
-        if (Array.isArray(other.excludeCoGivers)) {
-          other.excludeCoGivers = other.excludeCoGivers.filter((id) => id !== removedId);
-        }
-      }
+      removeParticipantAt(preset, idx);
       renderPresetSelect();
       renderActivePreset();
       await persistActivePreset();
     });
     tdRemove.appendChild(removeRowBtn);
 
-    tr.append(tdEmail, tdName, tdExcludeReceivers, tdExcludeCoGivers, tdRemove);
+    tr.appendChild(tdRemove);
     els.participantsTbody.appendChild(tr);
   });
-}
-
-async function persistActivePreset() {
-  state.userModified = true;
-  const preset = getActivePreset();
-  if (!preset) return;
-  await savePreset(preset);
 }
 
 function renderDryRunResults() {
@@ -536,7 +758,7 @@ function renderDryRunResults() {
   const thReceiver = document.createElement("th");
   thReceiver.textContent = t("tableColReceiver");
   const thGivers = document.createElement("th");
-  thGivers.textContent = t("tableColGivers");
+  thGivers.textContent = t(isTeamMode() ? "tableColGiversTeam" : "tableColGiversClassic");
   headRow.append(thReceiver, thGivers);
   thead.appendChild(headRow);
   table.appendChild(thead);
@@ -559,7 +781,6 @@ function renderDryRunResults() {
   table.appendChild(tbody);
   card.appendChild(table);
 
-  // Collapsible email previews
   const detailsWrap = document.createElement("details");
   detailsWrap.className = "mail-previews";
   const summary = document.createElement("summary");
@@ -591,6 +812,7 @@ async function callDrawApi(dryRun) {
   const payload = {
     dryRun,
     passcode: dryRun ? "" : els.passcodeInput?.value || "",
+    enableRecovery: !dryRun && Boolean(els.enableRecoveryCheckbox?.checked),
     lang: state.lang,
     rules: preset.rules,
     participants: preset.participants
@@ -623,12 +845,139 @@ async function callDrawApi(dryRun) {
       renderDryRunResults();
       showStatus("success", t("statusDryRunOk", { count: state.samples.length }));
     } else {
+      if (data.recoverySeed) {
+        preset.lastRecoverySeed = data.recoverySeed;
+        if (els.recoverySeedInput) els.recoverySeedInput.value = data.recoverySeed;
+        await persistActivePreset();
+        renderRecoveryControls();
+      } else {
+        preset.lastRecoverySeed = "";
+        renderRecoveryControls();
+      }
       showStatus("success", t("statusLiveSendOk", { count: data.sentCount }));
     }
   } catch (err) {
     showStatus("error", translateError(state.lang, "ERR_NETWORK", err.message));
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+async function handleGeneratePersonalCode() {
+  clearStatus();
+  const preset = getActivePreset();
+  const seed = els.recoverySeedInput?.value.trim() || "";
+  const targetIndex = Number.parseInt(els.recoveryPersonSelect?.value ?? "-1", 10);
+
+  if (els.generateCodeBtn) els.generateCodeBtn.disabled = true;
+  try {
+    const res = await fetch("/api/recover/code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seed,
+        lang: state.lang,
+        roundName: preset.name || "",
+        targetIndex,
+        rules: preset.rules,
+        participants: preset.participants
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showStatus("error", translateError(state.lang, data.errorCode || "ERR_BAD_JSON", data.detail));
+      return;
+    }
+
+    state.lastGeneratedPersonalCode = data.code;
+    if (els.generatedCodeBox && els.generatedCodeText && els.generatedCodeForLabel) {
+      els.generatedCodeForLabel.textContent = t("generatedCodeLabel", { person: data.giver });
+      els.generatedCodeText.textContent = data.code;
+      els.generatedCodeBox.hidden = false;
+    }
+    showStatus("success", t("statusCodeCreated", { giver: data.giver }));
+  } catch (err) {
+    showStatus("error", translateError(state.lang, "ERR_NETWORK", err.message));
+  } finally {
+    if (els.generateCodeBtn) els.generateCodeBtn.disabled = false;
+  }
+}
+
+async function handleResendSingleEmail() {
+  clearStatus();
+  const preset = getActivePreset();
+  const seed = els.recoverySeedInput?.value.trim() || "";
+  const targetIndex = Number.parseInt(els.recoveryPersonSelect?.value ?? "-1", 10);
+  const overrideEmail = els.recoveryOverrideEmailInput?.value.trim() || "";
+
+  if (els.resendSingleEmailBtn) els.resendSingleEmailBtn.disabled = true;
+  try {
+    const res = await fetch("/api/recover/resend", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        passcode: els.passcodeInput?.value || "",
+        seed,
+        lang: state.lang,
+        targetIndex,
+        overrideEmail,
+        rules: preset.rules,
+        participants: preset.participants
+      })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      showStatus("error", translateError(state.lang, data.errorCode || "ERR_BAD_JSON", data.detail));
+      return;
+    }
+
+    showStatus("success", t("statusResendOk", { giver: data.giver, email: data.sentTo }));
+  } catch (err) {
+    showStatus("error", translateError(state.lang, "ERR_NETWORK", err.message));
+  } finally {
+    if (els.resendSingleEmailBtn) els.resendSingleEmailBtn.disabled = false;
+  }
+}
+
+async function redeemPersonalCode(rawCode) {
+  clearStatus();
+  if (!rawCode || !rawCode.trim()) return;
+  if (els.redeemSubmitBtn) els.redeemSubmitBtn.disabled = true;
+  try {
+    const res = await fetch("/api/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: rawCode.trim() })
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) {
+      if (els.redeemResultBox) els.redeemResultBox.hidden = true;
+      showStatus("error", translateError(state.lang, data.errorCode || "ERR_INVALID_CODE", data.detail));
+      return;
+    }
+
+    if (!els.redeemResultBox) return;
+    els.redeemResultBox.replaceChildren();
+
+    const heading = document.createElement("h3");
+    heading.textContent = t("redeemResultHeading");
+
+    const meta = document.createElement("div");
+    meta.className = "redeem-meta";
+    const parts = [`${t("redeemForLabel")} ${data.giver}`];
+    if (data.roundName) parts.push(`${t("redeemRoundLabel")} ${data.roundName}`);
+    meta.textContent = parts.join(" · ");
+
+    const pre = document.createElement("pre");
+    pre.className = "mail-preview-body";
+    pre.textContent = data.body;
+
+    els.redeemResultBox.append(heading, meta, pre);
+    els.redeemResultBox.hidden = false;
+  } catch (err) {
+    showStatus("error", translateError(state.lang, "ERR_NETWORK", err.message));
+  } finally {
+    if (els.redeemSubmitBtn) els.redeemSubmitBtn.disabled = false;
   }
 }
 
@@ -654,6 +1003,65 @@ function parseBulkEntries(rawText) {
   return entries;
 }
 
+async function setGiverGroupSize(newSize) {
+  const preset = getActivePreset();
+  const prevSize = preset.rules.giverGroupSize || 1;
+  preset.rules.giverGroupSize = newSize;
+  if (newSize === 1 && prevSize >= 2) {
+    preset.rules.preventDirectReciprocity = true;
+  } else if (newSize >= 2 && prevSize === 1) {
+    preset.rules.preventDirectReciprocity = false;
+  }
+  state.samples = [];
+  state.dryRunMeta = null;
+  renderActivePreset();
+  renderDryRunResults();
+  await persistActivePreset();
+}
+
+async function addBlankParticipantAndFocus() {
+  const preset = getActivePreset();
+  preset.participants.push({
+    id: makeParticipantId(),
+    email: "",
+    name: "",
+    excludeReceivers: [],
+    excludeCoGivers: []
+  });
+  renderPresetSelect();
+  renderActivePreset();
+  focusParticipantInput(preset.participants.length - 1, "email");
+  await persistActivePreset();
+}
+
+async function loadModeExample() {
+  const preset = getActivePreset();
+  const example = isTeamMode() ? EXAMPLE_PARTICIPANTS_TEAM : EXAMPLE_PARTICIPANTS_CLASSIC;
+  preset.participants = structuredClone(example);
+  state.samples = [];
+  state.dryRunMeta = null;
+  if (els.generatedCodeBox) els.generatedCodeBox.hidden = true;
+  renderPresetSelect();
+  renderActivePreset();
+  renderDryRunResults();
+  showStatus("success", t("statusLoadedExample"));
+  await persistActivePreset();
+}
+
+function checkUrlRedeemHash() {
+  const hash = window.location.hash || "";
+  if (hash.includes("code=")) {
+    const idx = hash.lastIndexOf("code=");
+    const code = decodeURIComponent(hash.slice(idx + 5).split("&")[0].trim());
+    if (code && els.redeemSection && els.redeemCodeInput) {
+      els.redeemSection.hidden = false;
+      els.redeemCodeInput.value = code;
+      redeemPersonalCode(code);
+      els.redeemSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+}
+
 function bindEvents() {
   els.langSelect?.addEventListener("change", () => {
     state.lang = els.langSelect.value;
@@ -661,118 +1069,142 @@ function bindEvents() {
     applyTranslations();
   });
 
+  // Personal Code Redeem Section
+  els.openRedeemBtn?.addEventListener("click", () => {
+    if (!els.redeemSection) return;
+    els.redeemSection.hidden = !els.redeemSection.hidden;
+    if (!els.redeemSection.hidden) {
+      els.redeemCodeInput?.focus();
+    }
+  });
+
+  els.closeRedeemBtn?.addEventListener("click", () => {
+    if (els.redeemSection) els.redeemSection.hidden = true;
+  });
+
+  els.redeemForm?.addEventListener("submit", (e) => {
+    e.preventDefault();
+    redeemPersonalCode(els.redeemCodeInput?.value || "");
+  });
+
+  window.addEventListener("hashchange", checkUrlRedeemHash);
+
+  // Mode Selector Cards
+  els.modeCard1?.addEventListener("click", () => setGiverGroupSize(1));
+  els.modeCard2?.addEventListener("click", () => setGiverGroupSize(2));
+  els.modeCardMore?.addEventListener("click", () => {
+    const selected = Number.parseInt(els.giverGroupSizeSelect?.value || "3", 10) || 3;
+    setGiverGroupSize(Math.max(3, Math.min(5, selected)));
+  });
+  els.giverGroupSizeSelect?.addEventListener("change", () => {
+    const selected = Number.parseInt(els.giverGroupSizeSelect.value, 10) || 3;
+    setGiverGroupSize(Math.max(3, Math.min(5, selected)));
+  });
+
   els.twoWaySyncCheckbox?.addEventListener("change", () => {
     state.twoWaySync = els.twoWaySyncCheckbox.checked;
     localStorage.setItem("wichteln_twoway_sync", String(state.twoWaySync));
   });
 
+  // Saved Rounds (Presets)
   els.presetSelect?.addEventListener("change", () => {
-    state.activePresetId = els.presetSelect.value;
-    localStorage.setItem("wichteln_active_preset", state.activePresetId);
+    const chosenId = els.presetSelect.value;
+    if (!chosenId) {
+      state.currentRound = createEmptyDraft();
+    } else {
+      const found = state.savedPresets.find((p) => p.id === chosenId);
+      if (found) {
+        state.currentRound = structuredClone(found);
+      }
+    }
     state.samples = [];
     state.dryRunMeta = null;
+    if (els.generatedCodeBox) els.generatedCodeBox.hidden = true;
+    if (els.recoverySeedInput) els.recoverySeedInput.value = state.currentRound.lastRecoverySeed || "";
+    saveSessionDraft();
+    renderPresetSelect();
     renderActivePreset();
     renderDryRunResults();
     clearStatus();
   });
 
+  els.presetNameInput?.addEventListener("input", () => {
+    state.currentRound.name = els.presetNameInput.value;
+    saveSessionDraft();
+  });
+
   els.presetNameInput?.addEventListener("change", async () => {
-    const preset = getActivePreset();
-    if (!preset) return;
-    preset.name = els.presetNameInput.value.trim() || t("newPresetDefaultName");
+    state.currentRound.name = els.presetNameInput.value.trim();
     renderPresetSelect();
     await persistActivePreset();
   });
 
-  els.newPresetBtn?.addEventListener("click", async () => {
+  els.savePresetBtn?.addEventListener("click", async () => {
     state.userModified = true;
-    const newPreset = {
-      id: `preset-${Date.now()}`,
-      name: t("newPresetDefaultName"),
-      rules: {
-        giverGroupSize: 2,
-        preventDuplicateCoGiverPairs: true,
-        preventDirectReciprocity: false,
-        sampleCount: 3
-      },
-      participants: [
-        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
-        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
-        { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] }
-      ]
-    };
-    state.presets.push(newPreset);
-    state.activePresetId = newPreset.id;
-    localStorage.setItem("wichteln_active_preset", state.activePresetId);
+    const round = state.currentRound;
+    if (!round.id) {
+      round.id = `preset-${Date.now()}`;
+    }
+    if (!round.name.trim()) {
+      round.name = t("newPresetDefaultName");
+    }
+    await persistActivePreset();
     renderPresetSelect();
     renderActivePreset();
-    await savePreset(newPreset);
+    showStatus("success", t("statusSavedPreset", { name: round.name }));
+  });
+
+  els.newPresetBtn?.addEventListener("click", () => {
+    state.userModified = true;
+    state.currentRound = createEmptyDraft();
+    state.samples = [];
+    state.dryRunMeta = null;
+    if (els.generatedCodeBox) els.generatedCodeBox.hidden = true;
+    if (els.recoverySeedInput) els.recoverySeedInput.value = "";
+    saveSessionDraft();
+    renderPresetSelect();
+    renderActivePreset();
+    renderDryRunResults();
+    clearStatus();
   });
 
   els.duplicatePresetBtn?.addEventListener("click", async () => {
     state.userModified = true;
-    const current = getActivePreset();
-    if (!current) return;
-    const copy = structuredClone(current);
+    const copy = structuredClone(state.currentRound);
     copy.id = `preset-${Date.now()}`;
-    copy.name = `${current.name}${t("copySuffix")}`;
-    state.presets.push(copy);
-    state.activePresetId = copy.id;
-    localStorage.setItem("wichteln_active_preset", state.activePresetId);
+    copy.name = `${copy.name || t("newPresetDefaultName")}${t("copySuffix")}`;
+    copy.lastRecoverySeed = "";
+    state.currentRound = copy;
+    await persistActivePreset();
     renderPresetSelect();
     renderActivePreset();
-    await savePreset(copy);
   });
 
   els.deletePresetBtn?.addEventListener("click", async () => {
     state.userModified = true;
-    if (state.presets.length <= 1) return;
-    const current = getActivePreset();
-    if (!current) return;
-    state.presets = state.presets.filter((p) => p.id !== current.id);
-    state.activePresetId = state.presets[0].id;
-    localStorage.setItem("wichteln_active_preset", state.activePresetId);
-    renderPresetSelect();
-    renderActivePreset();
-    await deletePresetById(current.id);
-  });
-
-  els.loadExampleBtn?.addEventListener("click", async () => {
-    const preset = getActivePreset();
-    if (!preset) return;
-    preset.participants = structuredClone(EXAMPLE_PARTICIPANTS_TEAM);
+    const idToDelete = state.currentRound.id;
+    if (!idToDelete) return;
+    state.savedPresets = state.savedPresets.filter((p) => p.id !== idToDelete);
+    state.currentRound = createEmptyDraft();
     state.samples = [];
     state.dryRunMeta = null;
+    if (els.recoverySeedInput) els.recoverySeedInput.value = "";
+    saveSessionDraft();
     renderPresetSelect();
     renderActivePreset();
     renderDryRunResults();
-    showStatus("success", t("statusLoadedExample"));
-    await persistActivePreset();
-  });
-
-  els.clearParticipantsBtn?.addEventListener("click", async () => {
-    const preset = getActivePreset();
-    if (!preset) return;
-    preset.participants = [
-      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
-      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] },
-      { id: makeParticipantId(), email: "", name: "", excludeReceivers: [], excludeCoGivers: [] }
-    ];
-    state.samples = [];
-    state.dryRunMeta = null;
-    renderPresetSelect();
-    renderActivePreset();
-    renderDryRunResults();
-    showStatus("success", t("statusClearedParticipants"));
-    await persistActivePreset();
+    await deletePresetById(idToDelete);
   });
 
   els.exportJsonBtn?.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify(state.presets, null, 2)], { type: "application/json" });
+    const exportList = state.currentRound.id
+      ? state.savedPresets
+      : [...state.savedPresets, { ...state.currentRound, id: `draft-${Date.now()}` }];
+    const blob = new Blob([JSON.stringify(exportList, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "wichteln-presets.json";
+    a.download = "wichteln-backup.json";
     a.click();
     URL.revokeObjectURL(url);
   });
@@ -784,18 +1216,25 @@ function bindEvents() {
       const text = await file.text();
       const imported = JSON.parse(text);
       const list = Array.isArray(imported) ? imported : [imported];
+      let lastImported = null;
       for (const item of list) {
         if (item && Array.isArray(item.participants)) {
           const preset = normalizePreset({
             id: item.id || `preset-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
             name: item.name || t("newPresetDefaultName"),
-            rules: item.rules || { giverGroupSize: 2, sampleCount: 3 },
+            lastRecoverySeed: item.lastRecoverySeed || "",
+            rules: item.rules || { giverGroupSize: 1, sampleCount: 3 },
             participants: item.participants
           });
           await savePreset(preset);
+          lastImported = preset;
         }
       }
-      state.presets = await loadAllPresets();
+      state.savedPresets = await loadAllPresets();
+      if (lastImported) {
+        state.currentRound = structuredClone(lastImported);
+        saveSessionDraft();
+      }
       renderPresetSelect();
       renderActivePreset();
       showStatus("success", t("statusImportOk"));
@@ -806,24 +1245,31 @@ function bindEvents() {
     }
   });
 
-  els.addParticipantBtn?.addEventListener("click", async () => {
+  // Participant Actions
+  els.addParticipantBtn?.addEventListener("click", addBlankParticipantAndFocus);
+  els.emptyAddFirstBtn?.addEventListener("click", addBlankParticipantAndFocus);
+  els.loadExampleBtn?.addEventListener("click", loadModeExample);
+  els.emptyLoadExampleBtn?.addEventListener("click", loadModeExample);
+
+  els.clearParticipantsBtn?.addEventListener("click", async () => {
     const preset = getActivePreset();
-    if (!preset) return;
-    preset.participants.push({
-      id: makeParticipantId(),
-      email: "",
-      name: "",
-      excludeReceivers: [],
-      excludeCoGivers: []
-    });
+    preset.participants = [];
+    state.samples = [];
+    state.dryRunMeta = null;
+    if (els.generatedCodeBox) els.generatedCodeBox.hidden = true;
     renderPresetSelect();
     renderActivePreset();
+    renderDryRunResults();
+    showStatus("success", t("statusClearedParticipants"));
     await persistActivePreset();
   });
 
   els.toggleBulkBtn?.addEventListener("click", () => {
     if (!els.bulkAddDrawer) return;
     els.bulkAddDrawer.hidden = !els.bulkAddDrawer.hidden;
+    if (!els.bulkAddDrawer.hidden) {
+      els.bulkAddTextarea?.focus();
+    }
   });
 
   els.cancelBulkBtn?.addEventListener("click", () => {
@@ -847,49 +1293,62 @@ function bindEvents() {
     }
   });
 
+  // Rules & Recovery Checkboxes
   const syncRules = async () => {
     const preset = getActivePreset();
-    if (!preset) return;
     preset.rules = {
-      giverGroupSize: Math.max(1, Math.min(5, Number.parseInt(els.giverGroupSizeInput?.value, 10) || 2)),
+      ...preset.rules,
       sampleCount: Math.max(1, Math.min(10, Number.parseInt(els.sampleCountInput?.value, 10) || 3)),
       preventDuplicateCoGiverPairs: Boolean(els.ruleDuplicateCoGivers?.checked),
-      preventDirectReciprocity: Boolean(els.ruleDirectReciprocity?.checked)
+      preventDirectReciprocity: Boolean(els.ruleDirectReciprocity?.checked),
+      enableRecovery: Boolean(els.enableRecoveryCheckbox?.checked)
     };
     await persistActivePreset();
   };
 
-  els.giverGroupSizeInput?.addEventListener("change", syncRules);
   els.sampleCountInput?.addEventListener("change", syncRules);
   els.ruleDuplicateCoGivers?.addEventListener("change", syncRules);
   els.ruleDirectReciprocity?.addEventListener("change", syncRules);
+  els.enableRecoveryCheckbox?.addEventListener("change", syncRules);
 
+  // Dry-Run & Live Send
   els.runDryRunBtn?.addEventListener("click", () => callDrawApi(true));
   els.liveSendForm?.addEventListener("submit", (e) => {
     e.preventDefault();
-    const preset = getActivePreset();
-    if (!preset) return;
     callDrawApi(false);
+  });
+
+  // Seed Copy & Recovery Actions
+  els.copySeedBtn?.addEventListener("click", () => {
+    copyTextWithFeedback(els.copySeedBtn, state.currentRound.lastRecoverySeed, "btnCopySeed");
+  });
+
+  els.generateCodeBtn?.addEventListener("click", handleGeneratePersonalCode);
+  els.resendSingleEmailBtn?.addEventListener("click", handleResendSingleEmail);
+
+  els.copyPersonalCodeBtn?.addEventListener("click", () => {
+    copyTextWithFeedback(els.copyPersonalCodeBtn, state.lastGeneratedPersonalCode, "btnCopyPersonalCode");
+  });
+
+  els.copyPersonalLinkBtn?.addEventListener("click", () => {
+    if (!state.lastGeneratedPersonalCode) return;
+    const link = `${window.location.origin}${window.location.pathname}#code=${encodeURIComponent(
+      state.lastGeneratedPersonalCode
+    )}`;
+    copyTextWithFeedback(els.copyPersonalLinkBtn, link, "btnCopyPersonalLink");
   });
 }
 
 async function init() {
-  // 1. Synchronously bind all UI events and render initial seed presets immediately
   bindEvents();
   renderLanguageSelect();
   applyTranslations();
+  checkUrlRedeemHash();
 
-  // 2. Load persisted presets from IndexedDB (with timeout/fallback)
   const loadedPresets = await loadAllPresets();
-  if (!state.userModified && Array.isArray(loadedPresets) && loadedPresets.length > 0) {
-    state.presets = loadedPresets;
-    if (!state.presets.some((p) => p.id === state.activePresetId)) {
-      state.activePresetId = state.presets[0].id;
-    }
-    applyTranslations();
-  }
+  state.savedPresets = loadedPresets;
+  renderPresetSelect();
 
-  // 3. Fetch server metadata (supported languages)
   try {
     const res = await fetch("/api/meta");
     if (res.ok) {

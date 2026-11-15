@@ -209,6 +209,65 @@ test-one-way-directed-exclusions:
   expect-equals [2] sol[1]
   expect-equals [0] sol[2]
 
+test-seeded-reproducibility-and-personal-codes:
+  participants := [
+    solver.Participant --id="p-anna" --email="anna@example.org" --name="Anna" --exclude-receivers=["p-ben"],
+    solver.Participant --id="p-ben" --email="ben@example.org" --name="Ben" --exclude-receivers=["p-anna"],
+    solver.Participant --id="p-clara" --email="clara@example.org" --name="Clara",
+    solver.Participant --id="p-david" --email="david@example.org" --name="David",
+    solver.Participant --id="p-elena" --email="elena@example.org" --name="Elena",
+    solver.Participant --id="p-felix" --email="felix@example.org" --name="Felix",
+  ]
+  rules := solver.Rules --giver-group-size=2
+
+  seed := solver.generate-recovery-seed
+  expect (solver.is-valid-seed seed)
+  expect (seed.starts-with "W-")
+
+  first := solver.solve participants rules --seed=seed
+  expect-not-null first
+  first-sig := solver.canonical-signature first
+
+  // Repeated solves with the exact same seed must reproduce the identical draw every time.
+  for i := 0; i < 10; i++:
+    again := solver.solve participants rules --seed=seed
+    expect-not-null again
+    expect-equals first-sig (solver.canonical-signature again)
+
+  // Personal code round-trip, URL extraction, and tamper rejection.
+  secret := "my-server-secret"
+  payload := {
+    "v": 1,
+    "giver": "Anna (anna@example.org)",
+    "roundName": "Test Round",
+    "lang": "de",
+    "subject": "Wichteln",
+    "body": "Hallo Anna,\n\nDu beschenkst zusammen mit Clara: David",
+    "assignments": [{"receiver": "David", "coGivers": ["Clara"]}],
+  }
+  code := solver.create-personal-code secret payload
+  expect (code.starts-with "WC1-")
+  // Must NOT leak plaintext names inside the code string
+  expect (not (code.contains "David"))
+  expect (not (code.contains "Clara"))
+
+  redeemed := solver.redeem-personal-code secret code
+  expect-not-null redeemed
+  expect-equals "Anna (anna@example.org)" redeemed["giver"]
+  expect-equals "Test Round" redeemed["roundName"]
+
+  // Also works when wrapped in a full share link
+  from-url := solver.redeem-personal-code secret "https://wichteln.example.org/#code=$code"
+  expect-not-null from-url
+  expect-equals "Anna (anna@example.org)" from-url["giver"]
+
+  // Wrong server secret must return null
+  expect-null (solver.redeem-personal-code "wrong-secret" code)
+
+  // Tampered code must return null
+  tampered := code[..code.size - 2] + (code.ends-with "A" ? "B" : "A") + "A"
+  expect-null (solver.redeem-personal-code secret tampered)
+
 main:
   test-k1-classic
   test-5-participants-k2-with-couple
@@ -217,4 +276,5 @@ main:
   test-validation-anti-spam
   test-single-unique-solution-and-unsatisfiable
   test-one-way-directed-exclusions
+  test-seeded-reproducibility-and-personal-codes
   print "All solver tests passed!"

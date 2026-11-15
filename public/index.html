@@ -3,220 +3,435 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wichteln / Engerl-Bengerl</title>
+  <title>Wichteln &amp; Engerl-Bengerl</title>
   <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-  <link rel="stylesheet" href="./styles.css?v=1.2.4">
+  <link rel="stylesheet" href="./styles.css?v=1.3.0">
 </head>
 <body>
   <header class="app-header">
     <div class="header-brand">
       <span class="brand-icon" aria-hidden="true">🎁</span>
       <div>
-        <h1 data-i18n="appTitle">Wichteln / Engerl-Bengerl</h1>
-        <p class="subtitle" data-i18n="appSubtitle">Team &amp; Classic Secret Santa</p>
+        <h1 data-i18n="appTitle">Wichteln &amp; Engerl-Bengerl</h1>
+        <p class="subtitle" data-i18n="appSubtitle">Einfach &amp; geheim auslosen – allein oder im Team</p>
       </div>
     </div>
     <div class="header-controls">
+      <button type="button" id="openRedeemBtn" class="btn btn-secondary btn-sm" data-i18n="btnOpenRedeemHeader">🎟️ Code einlösen</button>
       <label class="lang-switch">
-        <span data-i18n="uiLanguageLabel">Sprache / Mail-Text:</span>
+        <span class="lang-label" data-i18n="uiLanguageLabel">Sprache &amp; E-Mail-Text:</span>
         <select id="langSelect" aria-label="Language"></select>
       </label>
     </div>
   </header>
 
-  <main class="app-layout">
-    <!-- Left Column: Preset Management, Participants & Constraints -->
-    <section class="column-config">
-      <!-- Presets Card -->
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <h2 data-i18n="presetsTitle">Gespeicherte Runden (Presets)</h2>
-            <p class="card-hint" data-i18n="presetsHint">Werden nur lokal in deinem Browser gespeichert (IndexedDB, nicht am Server). Für Backups oder andere Geräte Export/Import JSON nutzen.</p>
-          </div>
-          <div class="btn-row">
-            <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neue Runde</button>
-            <button type="button" id="duplicatePresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnDuplicate">Duplizieren</button>
-            <button type="button" id="exportJsonBtn" class="btn btn-secondary btn-sm" data-i18n="btnExport">Export JSON</button>
-            <label class="btn btn-secondary btn-sm file-btn">
-              <span data-i18n="btnImport">Import JSON</span>
-              <input type="file" id="importJsonInput" accept="application/json" hidden>
-            </label>
-            <button type="button" id="deletePresetBtn" class="btn btn-danger btn-sm" data-i18n="btnDelete">Löschen</button>
-          </div>
-        </div>
-        <div class="preset-bar">
-          <label class="field">
-            <span class="field-label" data-i18n="selectPresetLabel">Aktive Runde</span>
-            <select id="presetSelect"></select>
-          </label>
-          <label class="field">
-            <span class="field-label" data-i18n="presetNameLabel">Name der Runde</span>
-            <input type="text" id="presetNameInput" maxlength="60">
-          </label>
-        </div>
-      </article>
+  <main class="app-container">
+    <!-- Status Banner -->
+    <div id="statusBanner" class="status-banner" hidden></div>
 
-      <!-- Participants Card -->
-      <article class="card">
-        <div class="card-header">
+    <!-- Personal Code Redeem Panel (for participants who received a personal code or #code= link) -->
+    <section id="redeemSection" class="card card-redeem" hidden>
+      <div class="card-header">
+        <div>
+          <h2 data-i18n="redeemTitle">🎟️ Persönlichen Wichtel-Code einlösen</h2>
+          <p class="card-hint" data-i18n="redeemHint">Du hast keine E-Mail bekommen, aber von der Organisation einen persönlichen Code oder Link erhalten? Gib ihn hier ein – es wird ausschließlich dein eigenes Los angezeigt.</p>
+        </div>
+        <button type="button" id="closeRedeemBtn" class="btn btn-secondary btn-sm" data-i18n="btnRedeemClose">Schließen</button>
+      </div>
+      <form id="redeemForm" class="redeem-form">
+        <label class="field">
+          <span class="field-label" data-i18n="redeemInputLabel">Dein persönlicher Wichtel-Code</span>
+          <input type="text" id="redeemCodeInput" autocomplete="off" spellcheck="false" data-i18n-placeholder="redeemInputPlaceholder" placeholder="WC1-…">
+        </label>
+        <button type="submit" id="redeemSubmitBtn" class="btn btn-primary" data-i18n="btnRedeemSubmit">Mein Los anzeigen</button>
+      </form>
+      <div id="redeemResultBox" class="redeem-result" hidden></div>
+    </section>
+
+    <!-- Clear Step-by-Step Progress Bar -->
+    <nav class="step-nav" aria-label="Steps">
+      <a href="#step-1" class="step-pill"><span data-i18n="stepNav1">1. Runde &amp; Spielart</span></a>
+      <a href="#step-2" class="step-pill"><span data-i18n="stepNav2">2. Wer macht mit?</span></a>
+      <a href="#step-3" class="step-pill"><span data-i18n="stepNav3">3. Vorschau testen</span></a>
+      <a href="#step-4" class="step-pill"><span data-i18n="stepNav4">4. Auslosen &amp; Hilfe</span></a>
+    </nav>
+
+    <!-- STEP 1: Round & Mode Selection -->
+    <article id="step-1" class="card step-card">
+      <div class="step-header">
+        <span class="step-badge" data-i18n="step1Badge">Schritt 1</span>
+        <div>
+          <h2 data-i18n="step1Title">Runde benennen &amp; Spielart wählen</h2>
+          <p class="card-hint" data-i18n="step1Hint">Lege fest, wie ihr schenken möchtet, oder öffne eine früher gespeicherte Runde.</p>
+        </div>
+      </div>
+
+      <div class="preset-bar">
+        <label class="field">
+          <span class="field-label" data-i18n="presetNameLabel">Name eurer Runde (optional)</span>
+          <input type="text" id="presetNameInput" maxlength="60" data-i18n-placeholder="presetNamePlaceholder" placeholder="z.B. Familien-Wichteln oder Büro-Runde">
+        </label>
+        <label class="field">
+          <span class="field-label" data-i18n="selectPresetLabel">Gespeicherte Runde in diesem Browser öffnen</span>
+          <select id="presetSelect"></select>
+        </label>
+      </div>
+
+      <div class="preset-actions-row">
+        <div class="btn-row">
+          <button type="button" id="savePresetBtn" class="btn btn-primary btn-sm" data-i18n="btnSavePreset">💾 Runde im Browser merken</button>
+          <button type="button" id="newPresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnNewPreset">+ Neue leere Runde</button>
+          <button type="button" id="duplicatePresetBtn" class="btn btn-secondary btn-sm" data-i18n="btnDuplicate">Duplizieren</button>
+          <button type="button" id="exportJsonBtn" class="btn btn-secondary btn-sm" data-i18n="btnExport">Backup speichern</button>
+          <label class="btn btn-secondary btn-sm file-btn">
+            <span data-i18n="btnImport">Backup laden</span>
+            <input type="file" id="importJsonInput" accept="application/json" hidden>
+          </label>
+          <button type="button" id="deletePresetBtn" class="btn btn-danger btn-sm" data-i18n="btnDelete">Löschen</button>
+        </div>
+        <p class="storage-note" data-i18n="presetsStorageNote">Hinweis: Gespeicherte Runden bleiben ausschließlich lokal in deinem Browser (nichts wird auf dem Server gespeichert). Für ein Backup oder ein anderes Gerät kannst du Export/Import nutzen.</p>
+      </div>
+
+      <hr class="section-divider">
+
+      <h3 class="subheading" data-i18n="modeHeading">Wie möchtet ihr wichteln?</h3>
+      <div class="mode-grid" role="radiogroup" aria-label="Gift Mode">
+        <!-- Mode 1: Classic Solo 1-on-1 -->
+        <button type="button" class="mode-card active" data-mode="1" id="modeCard1">
+          <div class="mode-diagram" aria-hidden="true">
+            <svg viewBox="0 0 210 54" class="mini-svg">
+              <circle cx="34" cy="27" r="17" class="svg-node" />
+              <text x="34" y="31" text-anchor="middle" class="svg-node-text" data-i18n="diagPersonA">Anna</text>
+              <line x1="56" y1="27" x2="146" y2="27" class="svg-arrow-line" />
+              <polygon points="146,22 156,27 146,32" class="svg-arrow-head" />
+              <rect x="90" y="13" width="28" height="24" rx="6" class="svg-gift-pill" />
+              <text x="104" y="29" text-anchor="middle" class="svg-emoji">🎁</text>
+              <circle cx="176" cy="27" r="17" class="svg-node svg-node-accent" />
+              <text x="176" y="31" text-anchor="middle" class="svg-node-text" data-i18n="diagPersonB">Ben</text>
+            </svg>
+          </div>
+          <strong class="mode-title" data-i18n="modeClassicTitle">Klassisches Wichteln (Allein)</strong>
+          <span class="mode-desc" data-i18n="modeClassicDesc">Jede Person zieht heimlich genau eine andere Person, besorgt allein ein Geschenk und bekommt am Ende selbst ein Geschenk.</span>
+        </button>
+
+        <!-- Mode 2: Team of 2 (Engerl-Bengerl) -->
+        <button type="button" class="mode-card" data-mode="2" id="modeCard2">
+          <div class="mode-diagram" aria-hidden="true">
+            <svg viewBox="0 0 210 54" class="mini-svg">
+              <rect x="6" y="7" width="84" height="40" rx="20" class="svg-team-box" />
+              <circle cx="28" cy="27" r="14" class="svg-node" />
+              <text x="28" y="31" text-anchor="middle" class="svg-node-text-sm">A</text>
+              <text x="48" y="31" text-anchor="middle" class="svg-plus">+</text>
+              <circle cx="68" cy="27" r="14" class="svg-node" />
+              <text x="68" y="31" text-anchor="middle" class="svg-node-text-sm">B</text>
+              <line x1="94" y1="27" x2="152" y2="27" class="svg-arrow-line" />
+              <polygon points="152,22 162,27 152,32" class="svg-arrow-head" />
+              <rect x="112" y="13" width="26" height="24" rx="6" class="svg-gift-pill" />
+              <text x="125" y="29" text-anchor="middle" class="svg-emoji">🎁</text>
+              <circle cx="182" cy="27" r="17" class="svg-node svg-node-accent" />
+              <text x="182" y="31" text-anchor="middle" class="svg-node-text-sm">C</text>
+            </svg>
+          </div>
+          <strong class="mode-title" data-i18n="modeTeam2Title">Team-Wichteln / Engerl-Bengerl (Zu zweit)</strong>
+          <span class="mode-desc" data-i18n="modeTeam2Desc">Immer zwei Personen tun sich heimlich für ein Geschenk zusammen. Jede Person macht bei zwei Geschenken mit und bekommt selbst ein Geschenk.</span>
+        </button>
+
+        <!-- Mode 3+: Larger Teams (3-5) -->
+        <button type="button" class="mode-card" data-mode="3" id="modeCardMore">
+          <div class="mode-diagram" aria-hidden="true">
+            <svg viewBox="0 0 210 54" class="mini-svg">
+              <rect x="6" y="7" width="94" height="40" rx="20" class="svg-team-box" />
+              <circle cx="24" cy="27" r="12" class="svg-node" />
+              <text x="24" y="31" text-anchor="middle" class="svg-node-text-sm">A</text>
+              <circle cx="53" cy="27" r="12" class="svg-node" />
+              <text x="53" y="31" text-anchor="middle" class="svg-node-text-sm">B</text>
+              <circle cx="82" cy="27" r="12" class="svg-node" />
+              <text x="82" y="31" text-anchor="middle" class="svg-node-text-sm">C</text>
+              <line x1="104" y1="27" x2="154" y2="27" class="svg-arrow-line" />
+              <polygon points="154,22 164,27 154,32" class="svg-arrow-head" />
+              <rect x="118" y="13" width="26" height="24" rx="6" class="svg-gift-pill" />
+              <text x="131" y="29" text-anchor="middle" class="svg-emoji">🎁</text>
+              <circle cx="184" cy="27" r="16" class="svg-node svg-node-accent" />
+              <text x="184" y="31" text-anchor="middle" class="svg-node-text-sm">D</text>
+            </svg>
+          </div>
+          <strong class="mode-title" data-i18n="modeTeamMoreTitle">Größeres Schenk-Team (3–5 Personen)</strong>
+          <span class="mode-desc" data-i18n="modeTeamMoreDesc">Drei bis fünf Personen legen gemeinsam für ein Geschenk zusammen. Jede Person hilft entsprechend oft mit und bekommt ein Geschenk.</span>
+        </button>
+      </div>
+
+      <div id="customTeamSizeBox" class="custom-team-box" hidden>
+        <label class="field">
+          <span class="field-label" data-i18n="modeTeamSizeLabel">Wie viele Personen schenken gemeinsam pro Geschenk?</span>
+          <select id="giverGroupSizeSelect">
+            <option value="3" data-i18n="modeTeamSize3">3 Personen pro Geschenk</option>
+            <option value="4" data-i18n="modeTeamSize4">4 Personen pro Geschenk</option>
+            <option value="5" data-i18n="modeTeamSize5">5 Personen pro Geschenk</option>
+          </select>
+        </label>
+      </div>
+    </article>
+
+    <!-- STEP 2: Participants & Exceptions -->
+    <article id="step-2" class="card step-card">
+      <div class="card-header">
+        <div class="step-header">
+          <span class="step-badge" data-i18n="step2Badge">Schritt 2</span>
           <div>
             <h2>
-              <span data-i18n="participantsTitle">Teilnehmer</span>
+              <span data-i18n="step2Title">Wer macht mit?</span>
               <span id="participantCountBadge" class="badge">0</span>
             </h2>
-            <p class="card-hint" data-i18n="participantsHint">E-Mail-Adresse genügt (Name ist optional und dient nur der Anzeige in der Mail).</p>
-          </div>
-          <div class="btn-row">
-            <button type="button" id="loadExampleBtn" class="btn btn-secondary btn-sm" data-i18n="btnLoadExample">Beispieldaten</button>
-            <button type="button" id="clearParticipantsBtn" class="btn btn-danger btn-sm" data-i18n="btnClearAll">Alle leeren</button>
-            <button type="button" id="toggleBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnBulkAdd">Liste einfügen</button>
-            <button type="button" id="addParticipantBtn" class="btn btn-primary btn-sm" data-i18n="btnAddParticipant">+ Zeile</button>
+            <p class="card-hint" data-i18n="participantsHint">Trage die E-Mail-Adressen aller Mitspielenden ein. Der Name ist freiwillig, macht die Anrede in der E-Mail aber persönlicher.</p>
           </div>
         </div>
+        <div class="btn-row">
+          <button type="button" id="addParticipantBtn" class="btn btn-primary btn-sm" data-i18n="btnAddParticipant">+ Person hinzufügen</button>
+          <button type="button" id="toggleBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnBulkAdd">Mehrere einfügen</button>
+          <button type="button" id="loadExampleBtn" class="btn btn-secondary btn-sm" data-i18n="btnLoadExample">Beispiel füllen</button>
+          <button type="button" id="clearParticipantsBtn" class="btn btn-danger btn-sm" data-i18n="btnClearAll">Liste leeren</button>
+        </div>
+      </div>
 
-        <!-- Explanation Box & Two-Way Sync Toggle -->
-        <div class="info-explainer">
-          <div class="info-item">
-            <strong data-i18n="explainReceiverTitle">🚫 Schenkt nicht an (Empfänger-Ausschluss):</strong>
-            <span data-i18n="explainReceiverText">Wähle direkt die Personen aus, die von dieser Person kein Geschenk erhalten sollen (z.B. Partner). Sie dürfen aber trotzdem gemeinsam für eine dritte Person ein Geschenk organisieren.</span>
+      <!-- Optional Bulk Add Drawer -->
+      <div id="bulkAddDrawer" class="bulk-drawer" hidden>
+        <label class="field">
+          <span class="field-label" data-i18n="bulkAddHelp">Eine Person pro Zeile (E-Mail-Adresse oder: E-Mail-Adresse, Name)</span>
+          <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, Anna&#10;ben@example.org, Ben"></textarea>
+        </label>
+        <div class="btn-row">
+          <button type="button" id="applyBulkBtn" class="btn btn-primary btn-sm" data-i18n="btnApplyBulk">Zur Liste hinzufügen</button>
+          <button type="button" id="cancelBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnCancel">Abbrechen</button>
+        </div>
+      </div>
+
+      <!-- Visual Diagrams Explaining Exceptions -->
+      <div class="diagram-explainer-grid" id="exclusionExplainerGrid">
+        <div class="diagram-card">
+          <div class="diagram-card-top">
+            <strong data-i18n="explainReceiverTitle">Ausnahme: „Beschenkt nicht“ (z.B. für Paare)</strong>
+            <svg viewBox="0 0 220 42" class="mini-svg-inline" aria-hidden="true">
+              <circle cx="24" cy="21" r="14" class="svg-node" />
+              <text x="24" y="25" text-anchor="middle" class="svg-node-text-sm">A</text>
+              <line x1="42" y1="21" x2="108" y2="21" class="svg-line-muted" />
+              <circle cx="75" cy="21" r="10" class="svg-cross-bg" />
+              <text x="75" y="25" text-anchor="middle" class="svg-cross-text">✕</text>
+              <circle cx="126" cy="21" r="14" class="svg-node" />
+              <text x="126" y="25" text-anchor="middle" class="svg-node-text-sm">B</text>
+              <text x="176" y="25" text-anchor="middle" class="svg-caption">🚫🎁</text>
+            </svg>
           </div>
-          <div class="info-item">
-            <strong data-i18n="explainCoGiverTitle">🤝 Kein Schenk-Team mit (Co-Schenker-Ausschluss):</strong>
-            <span data-i18n="explainCoGiverText">Wähle Personen aus, mit denen diese Person bei k ≥ 2 nicht zusammen in dasselbe Schenk-Team gelost werden soll.</span>
+          <p id="explainReceiverTextEl" data-i18n="explainReceiverTextClassic">Wähle hier Personen aus, die diese Person nicht ziehen soll (z.B. den eigenen Partner oder die eigene Partnerin).</p>
+        </div>
+
+        <div class="diagram-card" id="explainCoGiverCard" hidden>
+          <div class="diagram-card-top">
+            <strong data-i18n="explainCoGiverTitle">Ausnahme: „Nicht im selben Team mit“</strong>
+            <svg viewBox="0 0 200 42" class="mini-svg-inline" aria-hidden="true">
+              <rect x="8" y="4" width="96" height="34" rx="17" class="svg-team-box-danger" />
+              <circle cx="28" cy="21" r="12" class="svg-node" />
+              <text x="28" y="25" text-anchor="middle" class="svg-node-text-sm">C</text>
+              <text x="56" y="25" text-anchor="middle" class="svg-cross-text">✕</text>
+              <circle cx="84" cy="21" r="12" class="svg-node" />
+              <text x="84" y="25" text-anchor="middle" class="svg-node-text-sm">D</text>
+              <text x="114" y="25" text-anchor="start" class="svg-caption" data-i18n="diagNoTeamCaption">Kein Team</text>
+            </svg>
           </div>
-          <div class="sync-bar">
-            <label class="sync-toggle">
-              <input type="checkbox" id="twoWaySyncCheckbox" checked>
-              <span data-i18n="twoWaySyncLabel">„Schenkt nicht an“ standardmäßig beidseitig eintragen (↔ Paare)</span>
+          <p data-i18n="explainCoGiverText">Wähle Personen aus, mit denen diese Person nicht gemeinsam in dasselbe Schenk-Team gesteckt werden soll (z.B. wenn zwei Personen nicht zusammen organisieren können).</p>
+        </div>
+      </div>
+
+      <div class="sync-bar">
+        <label class="sync-toggle">
+          <input type="checkbox" id="twoWaySyncCheckbox" checked>
+          <span data-i18n="twoWaySyncLabel">„Beschenkt nicht“ automatisch für beide Seiten eintragen (ideal für Paare)</span>
+        </label>
+        <small class="field-help" data-i18n="twoWaySyncHint">Tipp: Mit einem Klick auf ↔ oder → auf einem blauen Schild kannst du jederzeit zwischen beidseitig (↔) und nur einseitig (→) wechseln.</small>
+      </div>
+
+      <!-- Empty List State -->
+      <div id="emptyParticipantsBox" class="empty-list-box">
+        <p class="empty-list-title" data-i18n="emptyParticipantsTitle">Die Teilnehmerliste ist noch leer.</p>
+        <p class="empty-list-sub" data-i18n="emptyParticipantsText">Füge jetzt Schritt für Schritt Personen hinzu, füge eine Liste ein oder probiere es mit Beispieldaten aus.</p>
+        <div class="btn-row btn-row-center">
+          <button type="button" id="emptyAddFirstBtn" class="btn btn-primary" data-i18n="btnEmptyAddFirst">+ Erste Person eintragen</button>
+          <button type="button" id="emptyLoadExampleBtn" class="btn btn-secondary" data-i18n="btnLoadExample">Beispiel füllen</button>
+        </div>
+      </div>
+
+      <!-- Participant Table (Desktop) / Stacked Cards (Mobile) -->
+      <div id="participantsTableWrap" class="table-wrap" hidden>
+        <table class="participants-table" id="participantsTable">
+          <thead>
+            <tr>
+              <th><span data-i18n="colEmail">E-Mail-Adresse *</span></th>
+              <th>
+                <span data-i18n="colName">Name (freiwillig)</span>
+                <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColName" data-tooltip="Steht in der Begrüßung und im Text der E-Mail.">ⓘ</span>
+              </th>
+              <th>
+                <span data-i18n="colExcludeReceivers">Beschenkt nicht</span>
+                <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeReceivers" data-tooltip="Diese Personen bekommen von dieser Person kein Geschenk.">ⓘ</span>
+              </th>
+              <th id="thExcludeCoGivers" hidden>
+                <span data-i18n="colExcludeCoGivers">Nicht im Team mit</span>
+                <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeCoGivers" data-tooltip="Kein gemeinsames Schenk-Team.">ⓘ</span>
+              </th>
+              <th class="col-actions" aria-label="Actions"></th>
+            </tr>
+          </thead>
+          <tbody id="participantsTbody"></tbody>
+        </table>
+      </div>
+    </article>
+
+    <!-- STEP 3: Extra Rules & Test Draw Preview -->
+    <article id="step-3" class="card step-card">
+      <div class="card-header">
+        <div class="step-header">
+          <span class="step-badge" data-i18n="step3Badge">Schritt 3</span>
+          <div>
+            <h2 data-i18n="step3Title">Zusatzregeln &amp; Probe-Auslosung (ohne E-Mails)</h2>
+            <p class="card-hint" data-i18n="step3Hint">Hier kannst du unverbindlich testen, ob mit euren Ausnahmen eine faire Auslosung aufgeht. Es werden dabei noch keine E-Mails verschickt.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rules-cards-grid">
+        <label class="checkbox-row" id="ruleDuplicateCoRow" hidden>
+          <input type="checkbox" id="ruleDuplicateCoGivers" checked>
+          <div class="rule-body">
+            <strong data-i18n="ruleDuplicateCoTitle">Abwechslungsreiche Teams (nicht zweimal dasselbe Duo)</strong>
+            <p data-i18n="ruleDuplicateCoDesc">Wer bei mehreren Geschenken mitmacht, bekommt jedes Mal andere Team-Partner zugeteilt statt zweimal mit genau derselben Person zu schenken.</p>
+          </div>
+          <svg viewBox="0 0 110 44" class="rule-svg" aria-hidden="true">
+            <rect x="4" y="3" width="46" height="17" rx="8" class="svg-team-box" />
+            <text x="27" y="15" text-anchor="middle" class="svg-node-text-sm">A + B</text>
+            <rect x="4" y="24" width="46" height="17" rx="8" class="svg-team-box" />
+            <text x="27" y="36" text-anchor="middle" class="svg-node-text-sm">A + C</text>
+            <text x="80" y="27" text-anchor="middle" class="svg-ok-text">✓</text>
+          </svg>
+        </label>
+
+        <label class="checkbox-row" id="ruleReciprocityRow">
+          <input type="checkbox" id="ruleDirectReciprocity" checked>
+          <div class="rule-body">
+            <strong data-i18n="ruleReciprocityTitle">Kein direktes Zurückschenken</strong>
+            <p data-i18n="ruleReciprocityDesc">Wenn Anna bereits Ben beschenkt, zieht Ben garantiert eine andere Person und schenkt nicht direkt an Anna zurück.</p>
+          </div>
+          <svg viewBox="0 0 110 44" class="rule-svg" aria-hidden="true">
+            <text x="14" y="16" text-anchor="middle" class="svg-node-text-sm">A</text>
+            <line x1="24" y1="12" x2="72" y2="12" class="svg-arrow-line" />
+            <text x="84" y="16" text-anchor="middle" class="svg-node-text-sm">B ✓</text>
+            <text x="14" y="37" text-anchor="middle" class="svg-node-text-sm">B</text>
+            <line x1="24" y1="33" x2="72" y2="33" class="svg-line-muted" />
+            <text x="48" y="37" text-anchor="middle" class="svg-cross-text">✕</text>
+            <text x="84" y="37" text-anchor="middle" class="svg-node-text-sm">A</text>
+          </svg>
+        </label>
+      </div>
+
+      <div class="dry-run-bar">
+        <label class="field dry-run-count-field">
+          <span class="field-label" data-i18n="ruleSampleCount">Anzahl der Vorschau-Beispiele</span>
+          <input type="number" id="sampleCountInput" min="1" max="10" value="3">
+          <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele unterschiedliche Beispiel-Auslosungen zum Prüfen gezeigt werden sollen</small>
+        </label>
+        <button type="button" id="runDryRunBtn" class="btn btn-primary btn-lg" data-i18n="btnRunDryRun">Probe-Auslosung testen</button>
+      </div>
+
+      <div id="dryRunResults" class="dry-run-results">
+        <p class="empty-state" data-i18n="dryRunEmpty">Noch keine Probe-Auslosung gestartet. Klicke auf „Probe-Auslosung testen“, um Beispiel-Zuordnungen und die E-Mail-Texte vorab zu sehen.</p>
+      </div>
+    </article>
+
+    <!-- STEP 4: Final Secret Draw, Email Dispatch & Recovery -->
+    <article id="step-4" class="card card-send step-card">
+      <div class="step-header">
+        <span class="step-badge step-badge-accent" data-i18n="step4Badge">Schritt 4</span>
+        <div>
+          <h2 data-i18n="step4Title">Geheime Auslosung &amp; E-Mails versenden</h2>
+          <p class="card-hint" data-i18n="step4Hint">Jetzt wird geheim ausgelost und jede Person erhält ihre persönliche E-Mail. Damit die Überraschung auch für dich gewahrt bleibt, wird die Zuordnung hier nicht angezeigt.</p>
+        </div>
+      </div>
+
+      <label class="checkbox-row recovery-opt-row">
+        <input type="checkbox" id="enableRecoveryCheckbox" checked>
+        <div class="rule-body">
+          <strong data-i18n="enableRecoveryTitle">Notfall-Wiederherstellung einschalten (empfohlen)</strong>
+          <p data-i18n="enableRecoveryDesc">Zeigt dir nach dem Versand ein geheimes Notfall-Passwort an. Falls jemand seine E-Mail nicht bekommt, kannst du damit später die E-Mail gezielt noch einmal senden oder einen persönlichen Abruf-Code für genau diese Person erstellen.</p>
+        </div>
+      </label>
+
+      <form id="liveSendForm" class="send-controls">
+        <input type="text" name="username" autocomplete="username" value="wichteln-organizer" class="sr-only" tabindex="-1" aria-hidden="true">
+        <label class="field">
+          <span class="field-label" data-i18n="passcodeLabel">Server-Passwort (Freigabe für E-Mail-Versand)</span>
+          <input type="password" id="passcodeInput" autocomplete="current-password" placeholder="••••••••">
+        </label>
+        <button type="submit" id="sendRealEmailsBtn" class="btn btn-accent btn-lg" data-i18n="btnSendEmails">🎁 Geheim auslosen &amp; E-Mails senden</button>
+      </form>
+
+      <!-- Displayed after a live draw with recovery enabled -->
+      <div id="seedResultBox" class="seed-result-box" hidden>
+        <div class="seed-result-header">
+          <strong data-i18n="seedBoxTitle">🔑 Dein Notfall-Passwort für diese Auslosung</strong>
+          <button type="button" id="copySeedBtn" class="btn btn-secondary btn-sm" data-i18n="btnCopySeed">Notfall-Passwort kopieren</button>
+        </div>
+        <code id="seedDisplayCode" class="seed-code-display"></code>
+        <p class="card-hint" data-i18n="seedBoxHint">Bitte gut aufbewahren! Solange Teilnehmerliste und Regeln unverändert bleiben, kannst du damit unten jederzeit einzelne E-Mails erneut senden oder persönliche Codes erzeugen.</p>
+      </div>
+
+      <!-- Recovery Tools: Resend Single Email OR Generate Personal Lookup Code -->
+      <details id="recoveryDetails" class="recovery-details">
+        <summary data-i18n="recoverySectionSummary">🛟 Hilfe: Jemand hat keine E-Mail bekommen? (Einzelversand &amp; Persönlicher Code)</summary>
+        <div class="recovery-body">
+          <p class="card-hint" data-i18n="recoveryIntro">Gib das Notfall-Passwort deiner Auslosung ein und wähle die betroffene Person. Die Auslosung bleibt dabei komplett geheim – auch du siehst nicht, wen die Person gezogen hat.</p>
+
+          <div class="preset-bar">
+            <label class="field">
+              <span class="field-label" data-i18n="recoverySeedInputLabel">Notfall-Passwort der Auslosung</span>
+              <input type="text" id="recoverySeedInput" autocomplete="off" spellcheck="false" data-i18n-placeholder="recoverySeedPlaceholder" placeholder="z.B. W-ABCD-1234-…">
             </label>
-            <small class="field-help" data-i18n="twoWaySyncHint">Tipp: Klicke auf ↔ / → in einem Tag, um jederzeit zwischen beidseitig (↔) und einseitig (→) zu wechseln.</small>
+            <label class="field">
+              <span class="field-label" data-i18n="recoveryPersonLabel">Welche Person hat ihre E-Mail nicht erhalten?</span>
+              <select id="recoveryPersonSelect"></select>
+            </label>
           </div>
-        </div>
 
-        <!-- Optional Bulk Add Drawer -->
-        <div id="bulkAddDrawer" class="bulk-drawer" hidden>
-          <label class="field">
-            <span class="field-label" data-i18n="bulkAddHelp">E-Mail-Adressen (komma- oder zeilengetrennt, oder Format: email, Name)</span>
-            <textarea id="bulkAddTextarea" rows="4" placeholder="anna@example.org, Anna&#10;ben@example.org, Ben"></textarea>
-          </label>
-          <div class="btn-row">
-            <button type="button" id="applyBulkBtn" class="btn btn-primary btn-sm" data-i18n="btnApplyBulk">Hinzufügen</button>
-            <button type="button" id="cancelBulkBtn" class="btn btn-secondary btn-sm" data-i18n="btnCancel">Abbrechen</button>
-          </div>
-        </div>
+          <div class="recovery-actions-grid">
+            <!-- Option A: Personal Code / Share Link -->
+            <div class="recovery-action-card">
+              <h3 data-i18n="recoveryCodeCardTitle">Option A: Persönlichen Abruf-Code schicken (ohne E-Mail)</h3>
+              <p class="card-hint" data-i18n="recoveryCodeCardDesc">Ideal, wenn E-Mails im Spam hängen bleiben: Erzeuge einen verschlüsselten Code oder Direkt-Link und schicke ihn der Person z.B. per WhatsApp oder Signal. Der Code zeigt nur ihr eigenes Los.</p>
+              <button type="button" id="generateCodeBtn" class="btn btn-primary" data-i18n="btnGeneratePersonalCode">🎟️ Persönlichen Code erstellen</button>
 
-        <div class="table-wrap">
-          <table class="participants-table">
-            <thead>
-              <tr>
-                <th>
-                  <span data-i18n="colEmail">E-Mail-Adresse *</span>
-                </th>
-                <th>
-                  <span data-i18n="colName">Name (optional)</span>
-                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColName" data-tooltip="Wird in der E-Mail-Anrede und Zuordnung angezeigt. Wenn leer, wird die E-Mail-Adresse verwendet.">ⓘ</span>
-                </th>
-                <th>
-                  <span data-i18n="colExcludeReceivers">Schenkt nicht an</span>
-                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeReceivers" data-tooltip="Personen auswählen, die diese Person nicht beschenken soll. ↔ = gegenseitig (Paar), → = nur einseitig (klickbar).">ⓘ</span>
-                </th>
-                <th>
-                  <span data-i18n="colExcludeCoGivers">Kein Schenk-Team mit</span>
-                  <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipColExcludeCoGivers" data-tooltip="Personen auswählen, mit denen diese Person bei k ≥ 2 kein gemeinsames Schenk-Team bilden soll.">ⓘ</span>
-                </th>
-                <th class="col-actions" aria-label="Actions"></th>
-              </tr>
-            </thead>
-            <tbody id="participantsTbody"></tbody>
-          </table>
-        </div>
-      </article>
-
-      <!-- Solver Rules Card -->
-      <article class="card">
-        <div class="card-header">
-          <h2 data-i18n="rulesTitle">Regeln &amp; Optionen</h2>
-        </div>
-        <div class="rules-grid">
-          <label class="field">
-            <span class="field-label">
-              <span data-i18n="ruleGiverGroupSize">Schenkende pro Geschenk (k)</span>
-              <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipGiverGroupSize" data-tooltip="Wie viele Personen legen für ein Geschenk zusammen? Gleichzeitig beteiligt sich jede Person an k Geschenken.">ⓘ</span>
-            </span>
-            <input type="number" id="giverGroupSizeInput" min="1" max="5" value="2">
-            <small class="field-help" data-i18n="ruleGiverGroupSizeHelp">k=1: Klassisches Wichteln (1:1) · k=2: Engerl-Bengerl zu zweit (jeder schenkt 2× im Team und bekommt 1 Geschenk)</small>
-          </label>
-
-          <label class="field">
-            <span class="field-label">
-              <span data-i18n="ruleSampleCount">Anzahl Dry-Run-Beispiele</span>
-              <span class="tooltip-icon" tabindex="0" data-i18n-title="tooltipSampleCount" data-tooltip="Berechnet mehrere unterschiedliche gültige Ziehungen zur Vorschau.">ⓘ</span>
-            </span>
-            <input type="number" id="sampleCountInput" min="1" max="10" value="3">
-            <small class="field-help" data-i18n="ruleSampleCountHelp">Wie viele verschiedene zufällige Ziehungen beim Dry-Run angezeigt werden</small>
-          </label>
-        </div>
-
-        <div class="checkbox-list">
-          <label class="checkbox-row">
-            <input type="checkbox" id="ruleDuplicateCoGivers" checked>
-            <div>
-              <strong data-i18n="ruleDuplicateCoTitle">Keine doppelten Schenk-Teams (bei k ≥ 2 empfohlen)</strong>
-              <p data-i18n="ruleDuplicateCoDesc">Verhindert, dass exakt dieselben zwei Personen {A, B} gleich zweimal zusammen für verschiedene Empfänger schenken müssen.</p>
+              <div id="generatedCodeBox" class="generated-code-box" hidden>
+                <span class="field-label" id="generatedCodeForLabel"></span>
+                <code id="generatedCodeText" class="personal-code-output"></code>
+                <div class="btn-row">
+                  <button type="button" id="copyPersonalCodeBtn" class="btn btn-secondary btn-sm" data-i18n="btnCopyPersonalCode">Code kopieren</button>
+                  <button type="button" id="copyPersonalLinkBtn" class="btn btn-primary btn-sm" data-i18n="btnCopyPersonalLink">Direkt-Link kopieren</button>
+                </div>
+              </div>
             </div>
-          </label>
 
-          <label class="checkbox-row">
-            <input type="checkbox" id="ruleDirectReciprocity">
-            <div>
-              <strong data-i18n="ruleReciprocityTitle">Keine direkte Gegenseitigkeit (A ↔ B, für k = 1)</strong>
-              <p data-i18n="ruleReciprocityDesc">Wenn Person A an Person B schenkt, darf B nicht gleichzeitig an A schenken (vor allem beim klassischen 1:1-Wichteln sinnvoll).</p>
+            <!-- Option B: Resend Single Email via SMTP -->
+            <div class="recovery-action-card">
+              <h3 data-i18n="recoveryResendCardTitle">Option B: E-Mail gezielt erneut senden</h3>
+              <p class="card-hint" data-i18n="recoveryResendCardDesc">Verschickt exakt dieselbe gezogene E-Mail noch einmal nur an diese eine Person. Falls ein Tippfehler in der Adresse war, kannst du hier eine korrigierte E-Mail-Adresse eintragen.</p>
+              <label class="field">
+                <span class="field-label" data-i18n="recoveryOverrideEmailLabel">Abweichende E-Mail-Adresse (nur falls Tippfehler, sonst leer lassen)</span>
+                <input type="email" id="recoveryOverrideEmailInput" data-i18n-placeholder="recoveryOverrideEmailPlaceholder" placeholder="korrigierte.adresse@example.org">
+              </label>
+              <button type="button" id="resendSingleEmailBtn" class="btn btn-accent" data-i18n="btnResendSingleEmail">✉️ E-Mail nur an diese Person senden</button>
             </div>
-          </label>
-        </div>
-      </article>
-    </section>
-
-    <!-- Right Column: Dry-Run & Live Email Dispatch -->
-    <section class="column-actions">
-      <!-- Status Banner -->
-      <div id="statusBanner" class="status-banner" hidden></div>
-
-      <!-- Dry-Run Card -->
-      <article class="card">
-        <div class="card-header">
-          <div>
-            <h2 data-i18n="dryRunTitle">1. Dry-Run (Test-Ziehung prüfen)</h2>
-            <p class="card-hint" data-i18n="dryRunHint">Berechnet Beispiel-Ziehungen am Server und zeigt die E-Mail-Vorschau, ohne E-Mails zu versenden.</p>
-          </div>
-          <button type="button" id="runDryRunBtn" class="btn btn-primary" data-i18n="btnRunDryRun">Dry-Run starten</button>
-        </div>
-
-        <div id="dryRunResults" class="dry-run-results">
-          <p class="empty-state" data-i18n="dryRunEmpty">Noch kein Dry-Run ausgeführt. Klicke auf „Dry-Run starten“, um zufällige Ziehungen zu prüfen.</p>
-        </div>
-      </article>
-
-      <!-- Live Send Card -->
-      <article class="card card-send">
-        <div class="card-header">
-          <div>
-            <h2 data-i18n="liveSendTitle">2. Echte Ziehung &amp; E-Mail-Versand</h2>
-            <p class="card-hint" data-i18n="liveSendHint">Das Backend zieht eine neue geheime Zuordnung und verschickt die E-Mails direkt. Die Zuordnung wird nicht an den Browser übertragen.</p>
           </div>
         </div>
-        <form id="liveSendForm" class="send-controls">
-          <label class="field">
-            <span class="field-label" data-i18n="passcodeLabel">Server-Passcode</span>
-            <input type="password" id="passcodeInput" autocomplete="current-password" placeholder="••••••••">
-          </label>
-          <button type="submit" id="sendRealEmailsBtn" class="btn btn-accent" data-i18n="btnSendEmails">Geheim auslosen &amp; Mails senden</button>
-        </form>
-      </article>
-    </section>
+      </details>
+    </article>
   </main>
 
-  <script type="module" src="./app.js?v=1.2.4"></script>
+  <script type="module" src="./app.js?v=1.3.0"></script>
 </body>
 </html>

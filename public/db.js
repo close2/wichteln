@@ -1,15 +1,26 @@
-// Native IndexedDB persistence for participant rounds/presets and constraint rules.
+// Local browser persistence (IndexedDB + sessionStorage) for saved rounds.
+// Always starts fresh with an empty participant list in a new session.
 
 const DB_NAME = "wichteln_app_db";
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_PRESETS = "presets";
+const LEGACY_SEED_IDS = new Set(["preset-friends-couples", "preset-classic-wichteln"]);
 
-const DEFAULT_RULES = {
-  giverGroupSize: 2,
+export const DEFAULT_RULES = {
+  giverGroupSize: 1,
   preventDuplicateCoGiverPairs: true,
-  preventDirectReciprocity: false,
-  sampleCount: 3
+  preventDirectReciprocity: true,
+  sampleCount: 3,
+  enableRecovery: true
 };
+
+export const EXAMPLE_PARTICIPANTS_CLASSIC = [
+  { id: "cw-1", email: "anna@example.org", name: "Anna", excludeReceivers: ["cw-2"], excludeCoGivers: [] },
+  { id: "cw-2", email: "ben@example.org", name: "Ben", excludeReceivers: ["cw-1"], excludeCoGivers: [] },
+  { id: "cw-3", email: "clara@example.org", name: "Clara", excludeReceivers: [], excludeCoGivers: [] },
+  { id: "cw-4", email: "david@example.org", name: "David", excludeReceivers: [], excludeCoGivers: [] },
+  { id: "cw-5", email: "elena@example.org", name: "Elena", excludeReceivers: [], excludeCoGivers: [] }
+];
 
 export const EXAMPLE_PARTICIPANTS_TEAM = [
   { id: "p-anna", email: "anna@example.org", name: "Anna", excludeReceivers: ["p-ben"], excludeCoGivers: [] },
@@ -23,26 +34,15 @@ export const EXAMPLE_PARTICIPANTS_TEAM = [
   { id: "p-iris", email: "iris@example.org", name: "Iris", excludeReceivers: [], excludeCoGivers: [] }
 ];
 
-export const SEED_PRESETS = [
-  {
-    id: "preset-friends-couples",
-    name: "Engerl-Bengerl (Beispiel mit 9 Personen)",
-    rules: { ...DEFAULT_RULES, giverGroupSize: 2 },
-    participants: structuredClone(EXAMPLE_PARTICIPANTS_TEAM)
-  },
-  {
-    id: "preset-classic-wichteln",
-    name: "Klassisches Wichteln (Beispiel mit 5 Personen)",
-    rules: { ...DEFAULT_RULES, giverGroupSize: 1 },
-    participants: [
-      { id: "cw-1", email: "alice@example.org", name: "Alice", excludeReceivers: ["cw-2"], excludeCoGivers: [] },
-      { id: "cw-2", email: "bob@example.org", name: "Bob", excludeReceivers: ["cw-1"], excludeCoGivers: [] },
-      { id: "cw-3", email: "carol@example.org", name: "Carol", excludeReceivers: [], excludeCoGivers: [] },
-      { id: "cw-4", email: "dave@example.org", name: "Dave", excludeReceivers: [], excludeCoGivers: [] },
-      { id: "cw-5", email: "eve@example.org", name: "Eve", excludeReceivers: [], excludeCoGivers: [] }
-    ]
-  }
-];
+export function createEmptyDraft() {
+  return {
+    id: "",
+    name: "",
+    lastRecoverySeed: "",
+    rules: { ...DEFAULT_RULES },
+    participants: []
+  };
+}
 
 export function normalizePreset(preset) {
   const participants = Array.isArray(preset.participants) ? preset.participants : [];
@@ -91,6 +91,17 @@ export function normalizePreset(preset) {
     delete p.receiverGroups;
     delete p.coGiverGroups;
   }
+
+  const rawRules = preset.rules || {};
+  preset.rules = {
+    giverGroupSize: Math.max(1, Math.min(5, Number.parseInt(rawRules.giverGroupSize, 10) || 1)),
+    preventDuplicateCoGiverPairs: rawRules.preventDuplicateCoGiverPairs !== false,
+    preventDirectReciprocity: Boolean(rawRules.preventDirectReciprocity),
+    sampleCount: Math.max(1, Math.min(10, Number.parseInt(rawRules.sampleCount, 10) || 3)),
+    enableRecovery: rawRules.enableRecovery !== false
+  };
+  preset.lastRecoverySeed = typeof preset.lastRecoverySeed === "string" ? preset.lastRecoverySeed : "";
+  preset.participants = participants;
   return preset;
 }
 
@@ -106,12 +117,15 @@ function openDb() {
 
     try {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = (event) => {
+      req.onupgradeneeded = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains(STORE_PRESETS)) {
           db.createObjectStore(STORE_PRESETS, { keyPath: "id" });
-        } else if (event.oldVersion < 5) {
-          req.transaction.objectStore(STORE_PRESETS).clear();
+        } else {
+          const store = req.transaction.objectStore(STORE_PRESETS);
+          for (const legacyId of LEGACY_SEED_IDS) {
+            store.delete(legacyId);
+          }
         }
       };
       req.onblocked = () => {
@@ -151,16 +165,6 @@ function openDb() {
   });
 }
 
-function sortPresets(presets) {
-  const order = new Map(SEED_PRESETS.map((p, idx) => [p.id, idx]));
-  return [...presets].sort((a, b) => {
-    const oa = order.has(a.id) ? order.get(a.id) : 100;
-    const ob = order.has(b.id) ? order.get(b.id) : 100;
-    if (oa !== ob) return oa - ob;
-    return String(a.id).localeCompare(String(b.id));
-  });
-}
-
 export async function loadAllPresets() {
   let db = null;
   try {
@@ -172,28 +176,19 @@ export async function loadAllPresets() {
       req.onerror = () => reject(req.error);
     });
 
-    if (existing.length > 0) {
-      return sortPresets(existing.map(normalizePreset));
-    }
-
-    const tx = db.transaction(STORE_PRESETS, "readwrite");
-    const store = tx.objectStore(STORE_PRESETS);
-    for (const preset of SEED_PRESETS) {
-      store.put(preset);
-    }
-    await new Promise((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-    return structuredClone(SEED_PRESETS).map(normalizePreset);
+    return existing
+      .filter((p) => p && p.id && !LEGACY_SEED_IDS.has(p.id))
+      .map(normalizePreset)
+      .sort((a, b) => String(a.name || a.id).localeCompare(String(b.name || b.id)));
   } catch {
-    return structuredClone(SEED_PRESETS).map(normalizePreset);
+    return [];
   } finally {
     if (db) db.close();
   }
 }
 
 export async function savePreset(preset) {
+  if (!preset || !preset.id) return;
   let db = null;
   try {
     db = await openDb();
@@ -204,13 +199,14 @@ export async function savePreset(preset) {
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    // Ignore storage errors in fallback/private mode
+    // Ignore storage errors in private/restricted mode
   } finally {
     if (db) db.close();
   }
 }
 
 export async function deletePresetById(id) {
+  if (!id) return;
   let db = null;
   try {
     db = await openDb();
@@ -221,7 +217,7 @@ export async function deletePresetById(id) {
       tx.onerror = () => reject(tx.error);
     });
   } catch {
-    // Ignore storage errors in fallback/private mode
+    // Ignore storage errors in private/restricted mode
   } finally {
     if (db) db.close();
   }

@@ -1,6 +1,11 @@
 // Generalized Secret Santa / Engerl-Bengerl constraint solver and validator.
 // Uses only Toit 2.0 standard library modules.
 
+import crypto.hmac show hmac-sha256
+import crypto.sha256 show sha256
+import encoding.base64
+import encoding.json
+
 class ValidationError:
   code/string
   detail/string
@@ -179,11 +184,130 @@ validate-request-data
 
   return null
 
-shuffle-list_ list/List -> List:
+class SeededRng:
+  seed-bytes_/ByteArray
+  counter_/int := 0
+  buf_/ByteArray := ByteArray 0
+  pos_/int := 0
+
+  constructor seed/string:
+    seed-bytes_ = sha256 "wichteln-rng-v1:$seed".to-byte-array
+
+  next-uint31_ -> int:
+    if pos_ + 4 > buf_.size:
+      msg := ByteArray (seed-bytes_.size + 8)
+      msg.replace 0 seed-bytes_
+      c := counter_
+      counter_ = c + 1
+      for b := 0; b < 8; b++:
+        msg[seed-bytes_.size + b] = (c >> (b * 8)) & 0xff
+      buf_ = sha256 msg
+      pos_ = 0
+    val := buf_[pos_] | (buf_[pos_ + 1] << 8) | (buf_[pos_ + 2] << 16) | (buf_[pos_ + 3] << 24)
+    pos_ += 4
+    return val & 0x7fff_ffff
+
+  next-int bound/int -> int:
+    if bound <= 1: return 0
+    limit := (0x8000_0000 / bound) * bound
+    while true:
+      r := next-uint31_
+      if r < limit: return r % bound
+
+SEED-ALPHABET_ ::= "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+generate-recovery-seed -> string:
+  groups := []
+  for g := 0; g < 4; g++:
+    chars := ByteArray 4:
+      SEED-ALPHABET_[random SEED-ALPHABET_.size]
+    groups.add chars.to-string
+  return "W-$(groups.join "-")"
+
+is-valid-seed s/string -> bool:
+  if s.is-empty or s.size > 120: return false
+  valid := true
+  s.do --runes: | c/int |
+    if c < 0x20 or c == 0x7f: valid = false
+  return valid
+
+xor-keystream_ enc-key/ByteArray nonce/ByteArray data/ByteArray -> ByteArray:
+  out := ByteArray data.size
+  offset := 0
+  while offset < data.size:
+    block-idx := offset / 32
+    msg := ByteArray (nonce.size + 4)
+    msg.replace 0 nonce
+    msg[nonce.size] = block-idx & 0xff
+    msg[nonce.size + 1] = (block-idx >> 8) & 0xff
+    msg[nonce.size + 2] = (block-idx >> 16) & 0xff
+    msg[nonce.size + 3] = (block-idx >> 24) & 0xff
+    stream := hmac-sha256 --key=enc-key msg
+    chunk := min 32 (data.size - offset)
+    for i := 0; i < chunk; i++:
+      out[offset + i] = data[offset + i] ^ stream[i]
+    offset += chunk
+  return out
+
+extract-code-token_ raw/string -> string:
+  trimmed := raw.trim
+  idx := trimmed.index-of "code=" --last
+  if idx >= 0:
+    trimmed = trimmed[idx + 5 ..]
+    amp := trimmed.index-of "&"
+    if amp >= 0: trimmed = trimmed[..amp]
+    hash := trimmed.index-of "#"
+    if hash >= 0: trimmed = trimmed[..hash]
+  return trimmed.trim
+
+create-personal-code secret/string payload/Map -> string:
+  eff-secret := secret.is-empty ? "wichteln-default-secret" : secret
+  enc-key := hmac-sha256 --key=eff-secret "wichteln-code-enc-v1"
+  mac-key := hmac-sha256 --key=eff-secret "wichteln-code-mac-v1"
+  nonce := ByteArray 12: random 256
+  plain := json.encode payload
+  cipher := xor-keystream_ enc-key nonce plain
+  body := nonce + cipher
+  tag := (hmac-sha256 --key=mac-key body)[..16]
+  return "WC1-$(base64.encode (body + tag) --url-mode=true)"
+
+redeem-personal-code secret/string raw-input/string -> Map?:
+  token := extract-code-token_ raw-input
+  if not (token.starts-with "WC1-") or token.size > 8192: return null
+  b64 := token[4..]
+  decoded/ByteArray? := null
+  err := catch:
+    decoded = base64.decode b64 --url-mode=true
+  if err or not decoded or decoded.size < 30: return null
+
+  eff-secret := secret.is-empty ? "wichteln-default-secret" : secret
+  enc-key := hmac-sha256 --key=eff-secret "wichteln-code-enc-v1"
+  mac-key := hmac-sha256 --key=eff-secret "wichteln-code-mac-v1"
+
+  body-len := decoded.size - 16
+  body := decoded[..body-len]
+  got-tag := decoded[body-len..]
+  expected-tag := (hmac-sha256 --key=mac-key body)[..16]
+
+  diff := 0
+  for i := 0; i < 16; i++:
+    diff |= got-tag[i] ^ expected-tag[i]
+  if diff != 0: return null
+
+  nonce := body[..12]
+  cipher := body[12..]
+  plain := xor-keystream_ enc-key nonce cipher
+  parsed/any := null
+  j-err := catch:
+    parsed = json.decode plain
+  if j-err or parsed is not Map: return null
+  return parsed as Map
+
+shuffle-list_ list/List rng/SeededRng?=null -> List:
   copy := list.copy
   n := copy.size
   for i := n - 1; i > 0; i--:
-    j := random (i + 1)
+    j := rng ? (rng.next-int (i + 1)) : (random (i + 1))
     tmp := copy[i]
     copy[i] = copy[j]
     copy[j] = tmp
@@ -193,6 +317,7 @@ class SolverState_:
   n/int
   k/int
   rules/Rules
+  rng/SeededRng?
   receiver-order/List          // List of participant indices ordered most-constrained first
   forbidden-co-giver/ByteArray // n * n symmetric matrix (1 if i and j cannot be co-givers together)
   can-gift/ByteArray           // n * n directed matrix (1 if giver g can gift receiver r)
@@ -204,9 +329,10 @@ class SolverState_:
   steps/int := 0
   aborted/bool := false
 
-  constructor participants/List .rules --.forbidden-signatures/Set={}:
+  constructor participants/List .rules --.forbidden-signatures/Set={} --seed/string?=null:
     n = participants.size
     k = rules.giver-group-size
+    rng = (seed and not seed.is-empty) ? (SeededRng seed) : null
     forbidden-co-giver = ByteArray (n * n)
     can-gift = ByteArray (n * n)
     gives-to = ByteArray (n * n)
@@ -266,7 +392,7 @@ class SolverState_:
 
     // Order receivers by ascending number of eligible givers (most constrained first),
     // with random tie-breaking.
-    shuffled := shuffle-list_ (List n: it)
+    shuffled := shuffle-list_ (List n: it) rng
     eligible-counts := List n: | idx/int |
       count := 0
       for g := 0; g < n; g++:
@@ -321,7 +447,7 @@ class SolverState_:
 
     // Prioritize givers who have the most remaining gifts to give (to avoid stranding a giver at the end),
     // after shuffling for randomness.
-    candidates = shuffle-list_ candidates
+    candidates = shuffle-list_ candidates rng
     candidates.sort --in-place: | a/int b/int |
       give-count[a] - give-count[b]
 
@@ -396,12 +522,12 @@ canonical-signature assigned-givers/List -> string:
 Runs the constraint solver once and returns a List of length N where entry `r`
   is a List<int> of `k` giver participant indices, or null if unsatisfiable.
 */
-solve participants/List rules/Rules --forbidden-signatures/Set={} -> List?:
-  result := solve-with-status_ participants rules --forbidden-signatures=forbidden-signatures
+solve participants/List rules/Rules --forbidden-signatures/Set={} --seed/string?=null -> List?:
+  result := solve-with-status_ participants rules --forbidden-signatures=forbidden-signatures --seed=seed
   return result["solution"]
 
-solve-with-status_ participants/List rules/Rules --forbidden-signatures/Set={} -> Map:
-  state := SolverState_ participants rules --forbidden-signatures=forbidden-signatures
+solve-with-status_ participants/List rules/Rules --forbidden-signatures/Set={} --seed/string?=null -> Map:
+  state := SolverState_ participants rules --forbidden-signatures=forbidden-signatures --seed=seed
   if state.n > 0:
     // Quick degree feasibility check before recursion.
     for r := 0; r < state.n; r++:

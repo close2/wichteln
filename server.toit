@@ -13,6 +13,8 @@ MAX-BODY-BYTES_ ::= 32768
 REQUEST-TIMEOUT-MS_ ::= 10_000
 RATE-WINDOW-US_ ::= 15 * 60 * 1_000_000  // 15 minutes in microseconds
 MAX-LIVE-SENDS-PER-WINDOW_ ::= 5
+MAX-RESENDS-PER-WINDOW_ ::= 20
+MAX-CODE-GEN-PER-WINDOW_ ::= 60
 MAX-AUTH-FAILS-PER-WINDOW_ ::= 5
 
 stat_ name/string follow-links/bool -> List?:
@@ -37,6 +39,8 @@ constant-time-equals_ a/string b/string -> bool:
 
 class RateLimiter_:
   live-send-timestamps/List := []
+  resend-timestamps/List := []
+  code-gen-timestamps/List := []
   auth-fail-timestamps/List := []
 
   prune_ list/List now/int -> List:
@@ -62,6 +66,26 @@ class RateLimiter_:
     now := Time.monotonic-us
     live-send-timestamps = prune_ live-send-timestamps now
     live-send-timestamps.add now
+
+  allow-resend -> bool:
+    now := Time.monotonic-us
+    resend-timestamps = prune_ resend-timestamps now
+    return resend-timestamps.size < MAX-RESENDS-PER-WINDOW_
+
+  record-resend -> none:
+    now := Time.monotonic-us
+    resend-timestamps = prune_ resend-timestamps now
+    resend-timestamps.add now
+
+  allow-code-gen -> bool:
+    now := Time.monotonic-us
+    code-gen-timestamps = prune_ code-gen-timestamps now
+    return code-gen-timestamps.size < MAX-CODE-GEN-PER-WINDOW_
+
+  record-code-gen -> none:
+    now := Time.monotonic-us
+    code-gen-timestamps = prune_ code-gen-timestamps now
+    code-gen-timestamps.add now
 
 STATIC-ALLOWLIST_ ::= {
   "/index.html": "text/html; charset=utf-8",
@@ -141,13 +165,21 @@ class ServerApp_:
       serve-static_ socket path
       return
 
-    if method == "POST" and path == "/api/draw":
-      if not (socket.in.try-ensure-buffered content-length):
-        send-json-error_ socket 400 "ERR_BAD_JSON" "Incomplete request body"
+    if method == "POST":
+      if path == "/api/draw" or path == "/api/recover/resend" or path == "/api/recover/code" or path == "/api/redeem":
+        if not (socket.in.try-ensure-buffered content-length):
+          send-json-error_ socket 400 "ERR_BAD_JSON" "Incomplete request body"
+          return
+        body-bytes := socket.in.read-bytes content-length
+        if path == "/api/draw":
+          handle-draw_ socket body-bytes
+        else if path == "/api/recover/resend":
+          handle-recover-resend_ socket body-bytes
+        else if path == "/api/recover/code":
+          handle-recover-code_ socket body-bytes
+        else if path == "/api/redeem":
+          handle-redeem_ socket body-bytes
         return
-      body-bytes := socket.in.read-bytes content-length
-      handle-draw_ socket body-bytes
-      return
 
     send-json-error_ socket 404 "ERR_NOT_FOUND" "Not found"
 
@@ -194,49 +226,18 @@ class ServerApp_:
     }
     send-response_ socket 200 "OK" "application/json; charset=utf-8" payload
 
-  handle-draw_ socket/tcp.Socket body-bytes/ByteArray -> none:
-    parsed/any := null
-    exception := catch:
-      parsed = json.decode body-bytes
-    if exception or parsed is not Map:
-      send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid JSON payload"
-      return
-
-    req := parsed as Map
-    dry-run := (req.get "dryRun") != false
-    mode-str := dry-run ? "DRY-RUN" : "LIVE-SEND"
-    lang := (req.get "lang")
-    if lang is not string or not (templates.contains lang):
-      send-json-error_ socket 400 "ERR_INVALID_LANG" "Unsupported language code"
-      return
-
-    if not dry-run:
-      if not rate-limiter.allow-auth-attempt:
-        print "[$mode-str] Rejected: too many failed auth attempts"
-        send-json-error_ socket 429 "ERR_RATE_LIMITED" "Too many failed authentication attempts. Try again later."
-        return
-      supplied-pass := (req.get "passcode")
-      if supplied-pass is not string or passcode.is-empty or not (constant-time-equals_ supplied-pass passcode):
-        rate-limiter.record-auth-failure
-        print "[$mode-str] Rejected: invalid passcode"
-        send-json-error_ socket 401 "ERR_AUTH_FAILED" "Invalid passcode"
-        return
-      if not rate-limiter.allow-live-send:
-        print "[$mode-str] Rejected: live-send rate limit exceeded"
-        send-json-error_ socket 429 "ERR_RATE_LIMITED" "Rate limit exceeded for sending emails. Try again later."
-        return
-
-    raw-rules := (req.get "rules")
+  parse-rules-and-participants_ socket/tcp.Socket req/Map --dry-run/bool -> Map?:
+    raw-rules := req.get "rules"
     if raw-rules is not Map:
       send-json-error_ socket 400 "ERR_INVALID_RULES" "Missing or invalid rules object"
-      return
+      return null
     rules-map := raw-rules as Map
 
     k := rules-map.get "giverGroupSize"
     sample-count := dry-run ? ((rules-map.get "sampleCount") or 3) : 1
     if k is not int or sample-count is not int:
       send-json-error_ socket 400 "ERR_INVALID_RULES" "giverGroupSize and sampleCount must be integers"
-      return
+      return null
 
     rules := solver.Rules
         --giver-group-size=(k as int)
@@ -249,7 +250,7 @@ class ServerApp_:
     raw-participants := req.get "participants"
     if raw-participants is not List:
       send-json-error_ socket 400 "ERR_PARTICIPANT_COUNT" "participants must be a list"
-      return
+      return null
 
     participants := []
     bad-type := false
@@ -303,7 +304,53 @@ class ServerApp_:
 
     if bad-type:
       send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid participant field types"
+      return null
+
+    return {
+      "rules": rules,
+      "participants": participants,
+    }
+
+  verify-passcode_ socket/tcp.Socket req/Map mode-str/string -> bool:
+    if not rate-limiter.allow-auth-attempt:
+      print "[$mode-str] Rejected: too many failed auth attempts"
+      send-json-error_ socket 429 "ERR_RATE_LIMITED" "Too many failed authentication attempts. Try again later."
+      return false
+    supplied-pass := req.get "passcode"
+    if supplied-pass is not string or passcode.is-empty or not (constant-time-equals_ supplied-pass passcode):
+      rate-limiter.record-auth-failure
+      print "[$mode-str] Rejected: invalid passcode"
+      send-json-error_ socket 401 "ERR_AUTH_FAILED" "Invalid passcode"
+      return false
+    return true
+
+  handle-draw_ socket/tcp.Socket body-bytes/ByteArray -> none:
+    parsed/any := null
+    exception := catch:
+      parsed = json.decode body-bytes
+    if exception or parsed is not Map:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid JSON payload"
       return
+
+    req := parsed as Map
+    dry-run := (req.get "dryRun") != false
+    mode-str := dry-run ? "DRY-RUN" : "LIVE-SEND"
+    lang := req.get "lang"
+    if lang is not string or not (templates.contains lang):
+      send-json-error_ socket 400 "ERR_INVALID_LANG" "Unsupported language code"
+      return
+
+    if not dry-run:
+      if not (verify-passcode_ socket req mode-str): return
+      if not rate-limiter.allow-live-send:
+        print "[$mode-str] Rejected: live-send rate limit exceeded"
+        send-json-error_ socket 429 "ERR_RATE_LIMITED" "Rate limit exceeded for sending emails. Try again later."
+        return
+
+    inputs := parse-rules-and-participants_ socket req --dry-run=dry-run
+    if not inputs: return
+    rules := inputs["rules"] as solver.Rules
+    participants := inputs["participants"] as List
 
     val-err := solver.validate-request-data participants rules --require-emails=(not dry-run)
     if val-err:
@@ -344,7 +391,23 @@ class ServerApp_:
       return
 
     // Live send mode (dryRun == false)
-    assigned := solver.solve participants rules
+    enable-recovery := (req.get "enableRecovery") == true
+    raw-seed := (req.get "seed") or ""
+    if raw-seed is not string:
+      send-json-error_ socket 400 "ERR_INVALID_SEED" "Invalid seed format"
+      return
+    seed-str := (raw-seed as string).trim
+    if not seed-str.is-empty and not (solver.is-valid-seed seed-str):
+      send-json-error_ socket 400 "ERR_INVALID_SEED" "Invalid recovery seed"
+      return
+
+    active-seed/string? := null
+    if enable-recovery:
+      active-seed = seed-str.is-empty ? solver.generate-recovery-seed : seed-str
+    else if not seed-str.is-empty:
+      active-seed = seed-str
+
+    assigned := solver.solve participants rules --seed=active-seed
     if not assigned:
       print "[$mode-str] Unsatisfiable constraints for participant group"
       send-json-error_ socket 422 "ERR_UNSATISFIABLE" "Constraints cannot be satisfied for this participant group"
@@ -366,11 +429,209 @@ class ServerApp_:
       return
 
     rate-limiter.record-live-send
-    print "[$mode-str] Successfully dispatched $email-messages.size email(s)"
-    resp := json.encode {
+    print "[$mode-str] Successfully dispatched $email-messages.size email(s) (recovery=$(active-seed != null))"
+    resp-map := {
       "ok": true,
       "dryRun": false,
       "sentCount": email-messages.size,
+    }
+    if active-seed:
+      resp-map["recoverySeed"] = active-seed
+    send-response_ socket 200 "OK" "application/json; charset=utf-8" (json.encode resp-map)
+
+  handle-recover-resend_ socket/tcp.Socket body-bytes/ByteArray -> none:
+    mode-str := "RECOVER-RESEND"
+    parsed/any := null
+    exception := catch:
+      parsed = json.decode body-bytes
+    if exception or parsed is not Map:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid JSON payload"
+      return
+
+    req := parsed as Map
+    lang := req.get "lang"
+    if lang is not string or not (templates.contains lang):
+      send-json-error_ socket 400 "ERR_INVALID_LANG" "Unsupported language code"
+      return
+
+    if not (verify-passcode_ socket req mode-str): return
+    if not rate-limiter.allow-resend:
+      send-json-error_ socket 429 "ERR_RATE_LIMITED" "Too many resend requests. Try again later."
+      return
+
+    raw-seed := req.get "seed"
+    if raw-seed is not string or not (solver.is-valid-seed (raw-seed as string).trim):
+      send-json-error_ socket 400 "ERR_INVALID_SEED" "Missing or invalid recovery seed"
+      return
+    seed := (raw-seed as string).trim
+
+    target-idx := req.get "targetIndex"
+    if target-idx is not int:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "targetIndex must be an integer"
+      return
+
+    inputs := parse-rules-and-participants_ socket req --dry-run=false
+    if not inputs: return
+    rules := inputs["rules"] as solver.Rules
+    participants := inputs["participants"] as List
+
+    idx := target-idx as int
+    if idx < 0 or idx >= participants.size:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "targetIndex out of range"
+      return
+
+    val-err := solver.validate-request-data participants rules --require-emails=false
+    if val-err:
+      send-json-error_ socket 400 val-err.code val-err.detail
+      return
+
+    raw-override := (req.get "overrideEmail") or ""
+    if raw-override is not string:
+      send-json-error_ socket 400 "ERR_INVALID_EMAIL" "Invalid override email"
+      return
+    override-email := (raw-override as string).trim
+    target-p := participants[idx] as solver.Participant
+    delivery-email := override-email.is-empty ? target-p.email : override-email
+    if not (solver.is-valid-email delivery-email):
+      send-json-error_ socket 400 "ERR_INVALID_EMAIL" "Missing or invalid recipient email address"
+      return
+
+    assigned := solver.solve participants rules --seed=seed
+    if not assigned:
+      send-json-error_ socket 422 "ERR_UNSATISFIABLE" "Constraints cannot be satisfied for this participant group"
+      return
+
+    lang-template := templates[lang] as Map
+    draw-result := solver.build-draw-result participants assigned lang-template
+    by-giver := draw-result["byGiver"] as List
+    g-entry := by-giver[idx] as Map
+
+    msg := smtp.EmailMessage
+        --to-email=delivery-email
+        --subject=(g-entry["subject"] as string)
+        --body=(g-entry["body"] as string)
+
+    smtp-err := catch:
+      smtp.send-emails smtp-config [msg]
+    if smtp-err:
+      print "[$mode-str] ERROR: SMTP resend failed: $smtp-err"
+      send-json-error_ socket 502 "ERR_SMTP_FAILED" "Failed to dispatch email via SMTP: $smtp-err"
+      return
+
+    rate-limiter.record-resend
+    print "[$mode-str] Successfully resent single email for participant #$idx to $delivery-email"
+    resp := json.encode {
+      "ok": true,
+      "giver": g-entry["giver"],
+      "sentTo": delivery-email,
+    }
+    send-response_ socket 200 "OK" "application/json; charset=utf-8" resp
+
+  handle-recover-code_ socket/tcp.Socket body-bytes/ByteArray -> none:
+    mode-str := "RECOVER-CODE"
+    if not rate-limiter.allow-code-gen:
+      send-json-error_ socket 429 "ERR_RATE_LIMITED" "Too many code generation requests. Try again later."
+      return
+
+    parsed/any := null
+    exception := catch:
+      parsed = json.decode body-bytes
+    if exception or parsed is not Map:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid JSON payload"
+      return
+
+    req := parsed as Map
+    lang := req.get "lang"
+    if lang is not string or not (templates.contains lang):
+      send-json-error_ socket 400 "ERR_INVALID_LANG" "Unsupported language code"
+      return
+
+    raw-seed := req.get "seed"
+    if raw-seed is not string or not (solver.is-valid-seed (raw-seed as string).trim):
+      send-json-error_ socket 400 "ERR_INVALID_SEED" "Missing or invalid recovery seed"
+      return
+    seed := (raw-seed as string).trim
+
+    target-idx := req.get "targetIndex"
+    if target-idx is not int:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "targetIndex must be an integer"
+      return
+
+    raw-round := (req.get "roundName") or ""
+    round-name := raw-round is string ? (raw-round as string).trim : ""
+    if round-name.size > 80: round-name = round-name[..80]
+
+    inputs := parse-rules-and-participants_ socket req --dry-run=false
+    if not inputs: return
+    rules := inputs["rules"] as solver.Rules
+    participants := inputs["participants"] as List
+
+    idx := target-idx as int
+    if idx < 0 or idx >= participants.size:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "targetIndex out of range"
+      return
+
+    val-err := solver.validate-request-data participants rules --require-emails=false
+    if val-err:
+      send-json-error_ socket 400 val-err.code val-err.detail
+      return
+
+    assigned := solver.solve participants rules --seed=seed
+    if not assigned:
+      send-json-error_ socket 422 "ERR_UNSATISFIABLE" "Constraints cannot be satisfied for this participant group"
+      return
+
+    lang-template := templates[lang] as Map
+    draw-result := solver.build-draw-result participants assigned lang-template
+    by-giver := draw-result["byGiver"] as List
+    g-entry := by-giver[idx] as Map
+
+    code := solver.create-personal-code passcode {
+      "v": 1,
+      "giver": g-entry["giver"],
+      "roundName": round-name,
+      "lang": lang,
+      "subject": g-entry["subject"],
+      "body": g-entry["body"],
+      "assignments": g-entry["assignments"],
+    }
+
+    rate-limiter.record-code-gen
+    print "[$mode-str] Generated personal lookup code for participant #$idx"
+    resp := json.encode {
+      "ok": true,
+      "giver": g-entry["giver"],
+      "code": code,
+    }
+    send-response_ socket 200 "OK" "application/json; charset=utf-8" resp
+
+  handle-redeem_ socket/tcp.Socket body-bytes/ByteArray -> none:
+    parsed/any := null
+    exception := catch:
+      parsed = json.decode body-bytes
+    if exception or parsed is not Map:
+      send-json-error_ socket 400 "ERR_BAD_JSON" "Invalid JSON payload"
+      return
+
+    req := parsed as Map
+    raw-code := req.get "code"
+    if raw-code is not string or (raw-code as string).trim.is-empty:
+      send-json-error_ socket 400 "ERR_INVALID_CODE" "Missing personal code"
+      return
+
+    payload := solver.redeem-personal-code passcode (raw-code as string)
+    if not payload:
+      send-json-error_ socket 400 "ERR_INVALID_CODE" "Invalid or corrupted personal code"
+      return
+
+    resp := json.encode {
+      "ok": true,
+      "giver": (payload.get "giver") or "",
+      "roundName": (payload.get "roundName") or "",
+      "lang": (payload.get "lang") or "de",
+      "subject": (payload.get "subject") or "",
+      "body": (payload.get "body") or "",
+      "assignments": (payload.get "assignments") or [],
     }
     send-response_ socket 200 "OK" "application/json; charset=utf-8" resp
 
